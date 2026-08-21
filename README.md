@@ -85,6 +85,14 @@ A forged, unsigned webhook returns `{"received":true}` and a no-auth refund succ
 
 Anthropic ships general-purpose `code-review` and `claude-security` plugins. third-rail is deliberately not that: it is the layer generic review cannot be, your org's runbook and your org's sensitive paths, enforced deterministically at edit time and reviewed with judgment on demand. The runbook that ships here is one real org's starting point; the intent is that you edit `skills/hardening-runbook/SKILL.md` and `.third-rail.json` until they are yours. A hook rather than an MCP server because the persona's pain is enforcement at the moment of change, not access to an external system.
 
+## What it costs you in time
+
+A first review on a guarded path takes two to four minutes end to end, most of it the reviewer agent mapping routes and checking the change against the runbook.
+
+Read that number against how the guard actually fires. It only triggers on paths listed in `.third-rail.json`, which on most codebases is a handful of files, so the majority of your editing never touches it. And the acknowledgment file persists: the first edit to billing today costs a few minutes, the next twenty cost nothing. The wait is a pre-flight check when you start work on dangerous code, not a tax on every save.
+
+If your team cannot accept any wait at edit time, the same review belongs in CI, where it costs nobody anything because it runs after you have moved on. That is the first with-more-time item below.
+
 ## Context cost
 
 Measured from this repo's files (tokens estimated at words x 1.3):
@@ -93,8 +101,8 @@ Measured from this repo's files (tokens estimated at words x 1.3):
 |---|---|
 | Idle (always loaded) | ~185 tokens: the skill and agent descriptions |
 | Guard hook | 0 tokens idle; runs out of process. ~120 tokens of message only when it blocks |
-| Skill triggered | ~1,100 tokens, loaded only when sensitive work starts |
-| Agent invoked | Runs in its own context; the main conversation pays only for the report |
+| Skill triggered | ~1,250 tokens, loaded only when sensitive work starts |
+| Agent invoked | ~1,650 tokens in its own context; the main conversation pays only for the report, roughly 1,000 to 1,800 tokens depending on findings |
 
 ## Supply chain
 
