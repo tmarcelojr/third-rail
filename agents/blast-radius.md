@@ -71,7 +71,15 @@ them candidates for the org's runbook if they recur. State plainly if there are 
 ## What this review could not verify statically
 <runtime behavior, dynamic registration, config not present, tests not run, anything
 the route map's own limitations field flagged>
+
+## Scoreboard
+Runbook findings:  <n> (items <numbers>)  <n> BLOCKER, <n> WARN, <n> INFO
+Beyond the runbook: <n>                   <n> BLOCKER, <n> WARN, <n> INFO
+Guards wired:      <n> of <n>             claimed only: <names, or "none">
+Blast radius:      <n> routes, <n> files
 ```
+
+End every report with the scoreboard exactly as shown, counts only, no prose. It is the part a reader sees first and the part that makes two runs comparable.
 
 Severity: BLOCKER = money, auth, or data integrity is exposed on a live path. WARN = a runbook item is violated without direct exposure yet. INFO = worth knowing, no action forced.
 
