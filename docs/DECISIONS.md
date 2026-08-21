@@ -40,6 +40,12 @@ The plugin passed `claude plugin validate` and every component tested green in i
 
 This is the plugin's own thesis turned on its author: a control that is defined and tested but not verified as wired on the live path is not done. Fixes: direct-executable command matching the documented pattern, the exec bit committed as 100755 so it survives a clone, an explicit hooks declaration, and an ack scoped to the config directory or cwd so no distant stray can silently disable it. The acceptance check was the one that mattered: an edit to a guarded path is now blocked in a live session, not just in a unit test.
 
+## D10. The fix's fix: caught by an adversarial fresh-clone install
+
+Before shipping, two independent review agents graded the repo cold: one simulating the hiring panel, one pure red team instructed to execute every claim. The red team fresh-cloned the repo and ran a real CLI install, and found that the explicit `"hooks"` declaration added in D9 makes the installed plugin fail to load entirely on current Claude Code (duplicate-hooks error: the standard hooks/hooks.json is auto-loaded, so declaring it again collides with itself). The validator passes regardless. That is the D9 failure mode recurring on the D9 fix itself, and it was caught only because the acceptance test moved one level closer to reality: unit test, then live session, then fresh-clone install. Each level caught what the previous one could not.
+
+Fixes from this round, all re-verified: removed the duplicate hooks declaration (auto-load is the correct mechanism); hardened the guard against junk config entries and pathological glob patterns (both crash and hang reproduced by the red team, both now fail open with a note); replaced the over-broad default globs with whole-word token matching on code files so an unconfigured install no longer blocks files like authors-list.js in unrelated repos; disclosed the Bash bypass and the model-can-ack limits in the README; aligned the fixture's bug table to the runbook's actual item numbers; tightened the hook eval grader to require the block be surfaced to the human, not silently acknowledged.
+
 ## With-more-time candidates captured during the build
 
 - Eval suite with measured trigger rates (three seed cases ship in `evals/`).

@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "third-rail",
-      "source": ".",
+      "source": "./",
       "description": "Safe changes to the code everyone is afraid to touch. A deterministic guard hook, an org hardening runbook, and a blast-radius reviewer for legacy Node/Express monoliths."
     }
   ]

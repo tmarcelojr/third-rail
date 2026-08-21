@@ -3,12 +3,17 @@
  * third-rail guard: PreToolUse hook on Edit|Write|MultiEdit.
  *
  * Deterministic fence around the codebase's third rail. If the edit target
- * matches a sensitive path (project .third-rail.json, else defaults), block
- * with exit 2 and tell Claude exactly how to proceed safely.
+ * matches a sensitive path (project .third-rail.json, else a conservative
+ * default word list), block with exit 2 and tell Claude exactly how to
+ * proceed safely.
  *
- * Zero dependencies: node stdlib only, readable start to finish in two minutes.
- * The block is a speed bump against unconsidered changes, not access control;
- * the acknowledgment file records that the runbook was consulted on purpose.
+ * Zero dependencies: node stdlib only, readable start to finish in a few
+ * minutes. The block is a speed bump against unconsidered changes, not access
+ * control; the acknowledgment file records that the runbook was consulted.
+ *
+ * Robustness stance: this script runs on every edit, so its own bugs must
+ * never brick the editor loop. Malformed stdin, junk config entries, and
+ * pathological glob patterns all fail OPEN with a stderr note, never closed.
  */
 
 'use strict';
@@ -16,19 +21,36 @@
 const fs = require('fs');
 const path = require('path');
 
-const DEFAULT_SENSITIVE = [
-  '**/billing/**',
-  '**/*billing*',
-  '**/*webhook*',
-  '**/auth/**',
-  '**/*auth*',
-  '**/payments/**',
-  '**/*payment*',
-  '**/*session*'
-];
+// Defaults are deliberately conservative: whole-word segment tokens, applied
+// to code files only, so an unconfigured install does not block AUTHORS,
+// authors-list.js, or session-notes.md in unrelated repos. Projects tune this
+// precisely with .third-rail.json globs.
+const DEFAULT_TOKENS = new Set([
+  'auth',
+  'billing',
+  'payment',
+  'payments',
+  'webhook',
+  'webhooks',
+  'stripe',
+  'checkout',
+  'refund',
+  'refunds',
+  'entitlement',
+  'entitlements',
+  'session',
+  'sessions'
+]);
+
+const DEFAULT_CODE_EXTENSIONS = new Set([
+  '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.mts', '.cts',
+  '.py', '.rb', '.go', '.java', '.php', '.cs'
+]);
 
 const ACK_FILE = '.third-rail-ack';
 const CONFIG_FILE = '.third-rail.json';
+const MAX_PATTERN_LENGTH = 500;
+const MAX_WILDCARDS = 10;
 
 function readStdin() {
   try {
@@ -39,15 +61,25 @@ function readStdin() {
 }
 
 // Minimal glob: ** crosses directories, * stays within a segment.
-function globToRegExp(glob) {
+// Patterns with too many wildcards fall back to plain substring matching so a
+// pathological pattern cannot backtrack the regex engine into the hook timeout.
+function matchesGlob(pattern, target) {
+  if (typeof pattern !== 'string' || pattern.length === 0 || pattern.length > MAX_PATTERN_LENGTH) {
+    return false;
+  }
+  const stars = (pattern.match(/\*/g) || []).length;
+  if (stars > MAX_WILDCARDS) {
+    const literal = pattern.replace(/\*/g, '');
+    return literal.length > 0 && target.toLowerCase().includes(literal.toLowerCase());
+  }
   let out = '';
-  for (let i = 0; i < glob.length; i++) {
-    const ch = glob[i];
+  for (let i = 0; i < pattern.length; i++) {
+    const ch = pattern[i];
     if (ch === '*') {
-      if (glob[i + 1] === '*') {
+      if (pattern[i + 1] === '*') {
         out += '.*';
         i++;
-        if (glob[i + 1] === '/') i++;
+        if (pattern[i + 1] === '/') i++;
       } else {
         out += '[^/]*';
       }
@@ -57,7 +89,30 @@ function globToRegExp(glob) {
       out += ch;
     }
   }
-  return new RegExp('(^|/)' + out + '$', 'i');
+  try {
+    return new RegExp('(^|/)' + out + '$', 'i').test(target);
+  } catch {
+    return false;
+  }
+}
+
+// Default matching: split each path segment into words (dots, dashes,
+// underscores, camelCase boundaries) and require an exact word from the
+// token list. "paymentService.js" matches (payment); "authors-list.js"
+// does not (authors is not auth).
+function matchesDefaultTokens(target) {
+  const ext = path.extname(target).toLowerCase();
+  if (!DEFAULT_CODE_EXTENSIONS.has(ext)) return null;
+  for (const segment of target.split('/')) {
+    const words = segment
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/);
+    for (const word of words) {
+      if (DEFAULT_TOKENS.has(word)) return word;
+    }
+  }
+  return null;
 }
 
 function findUp(startDir, fileName, maxLevels = 10) {
@@ -72,20 +127,20 @@ function findUp(startDir, fileName, maxLevels = 10) {
   return null;
 }
 
-function loadPatterns(fileDir, cwd) {
+function loadConfig(fileDir, cwd) {
   const configPath =
     findUp(fileDir, CONFIG_FILE) || (cwd ? findUp(cwd, CONFIG_FILE, 3) : null);
-  if (configPath) {
-    try {
-      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-      if (Array.isArray(config.sensitivePaths) && config.sensitivePaths.length > 0) {
-        return { patterns: config.sensitivePaths, configPath };
-      }
-    } catch {
-      // Unreadable config: fall through to defaults rather than failing open silently.
-    }
+  if (!configPath) return { patterns: null, configPath: null };
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const patterns = Array.isArray(config.sensitivePaths)
+      ? config.sensitivePaths.filter((p) => typeof p === 'string' && p.length > 0)
+      : [];
+    if (patterns.length > 0) return { patterns, configPath };
+  } catch {
+    // Unreadable or junk config: fall through to defaults rather than crashing.
   }
-  return { patterns: DEFAULT_SENSITIVE, configPath: null };
+  return { patterns: null, configPath: null };
 }
 
 // The acknowledgment is scoped on purpose: it must sit next to the project's
@@ -97,46 +152,20 @@ function isAcknowledged(configPath, cwd) {
   const dirs = [];
   if (configPath) dirs.push(path.dirname(configPath));
   if (cwd) dirs.push(cwd);
-  return dirs.some((dir) => fs.existsSync(path.join(dir, ACK_FILE)));
+  return dirs.some((dir) => {
+    try {
+      return fs.existsSync(path.join(dir, ACK_FILE));
+    } catch {
+      return false;
+    }
+  });
 }
 
-function main() {
-  let input;
-  try {
-    input = JSON.parse(readStdin() || '{}');
-  } catch {
-    // Malformed input: do not block on a guard bug.
-    process.exit(0);
-  }
-
-  const toolInput = input.tool_input || {};
-  const filePath = toolInput.file_path || toolInput.filePath || '';
-  if (!filePath) process.exit(0);
-
-  const normalized = String(filePath).replace(/\\/g, '/');
-  const fileDir = path.dirname(normalized);
-  const cwd = input.cwd || process.cwd();
-
-  const { patterns, configPath } = loadPatterns(fileDir, cwd);
-  const matched = patterns.find((pattern) => globToRegExp(pattern).test(normalized));
-  if (!matched) process.exit(0);
-
-  if (isAcknowledged(configPath, cwd)) {
-    // Acknowledged: allow, but leave a one-line trace in the transcript.
-    process.stderr.write(
-      `third-rail: sensitive path (${matched}) edited under acknowledgment.\n`
-    );
-    process.exit(0);
-  }
-
-  const configNote = configPath
-    ? `matched "${matched}" from ${configPath}`
-    : `matched default pattern "${matched}" (no ${CONFIG_FILE} found)`;
-
+function block(normalized, reason) {
   process.stderr.write(
     [
-      `THIRD RAIL: ${normalized} is a guarded path (${configNote}).`,
-      'This code class has burned this org before. Before editing:',
+      `THIRD RAIL: ${normalized} is a guarded path (${reason}).`,
+      'Before editing:',
       '  1. Consult the runbook skill: third-rail:hardening-runbook',
       '  2. Run the blast-radius agent on the change you intend to make',
       `  3. Then create an acknowledgment file to proceed: touch ${ACK_FILE}`,
@@ -147,4 +176,51 @@ function main() {
   process.exit(2);
 }
 
-main();
+function main() {
+  let input;
+  try {
+    input = JSON.parse(readStdin() || '{}');
+  } catch {
+    process.exit(0); // Malformed input: do not block on a guard bug.
+  }
+
+  const toolInput = input.tool_input || {};
+  const filePath = toolInput.file_path || toolInput.filePath || '';
+  if (!filePath || typeof filePath !== 'string') process.exit(0);
+
+  const normalized = filePath.replace(/\\/g, '/');
+  const fileDir = path.dirname(normalized);
+  const cwd = typeof input.cwd === 'string' ? input.cwd : process.cwd();
+
+  const { patterns, configPath } = loadConfig(fileDir, cwd);
+
+  let reason = null;
+  if (patterns) {
+    const matched = patterns.find((pattern) => matchesGlob(pattern, normalized));
+    if (matched) {
+      reason = `matched "${matched}" from ${configPath}. This code class has burned this org before`;
+    }
+  } else {
+    const word = matchesDefaultTokens(normalized);
+    if (word) {
+      reason = `filename contains the sensitive word "${word}" from third-rail's default list; no ${CONFIG_FILE} found, add one to tune this to your repo`;
+    }
+  }
+
+  if (!reason) process.exit(0);
+
+  if (isAcknowledged(configPath, cwd)) {
+    process.stderr.write(`third-rail: sensitive path edited under acknowledgment.\n`);
+    process.exit(0);
+  }
+
+  block(normalized, reason);
+}
+
+try {
+  main();
+} catch (err) {
+  // A guard bug must never brick the editor loop: fail open, but say so.
+  process.stderr.write(`third-rail guard error, failing open: ${err.message}\n`);
+  process.exit(0);
+}

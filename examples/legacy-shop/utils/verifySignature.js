@@ -13,12 +13,9 @@ function verifySignature({ rawBody, timestamp, signature, secret, toleranceSecon
     .update(`${timestamp}.${rawBody}`)
     .digest();
 
-  let given;
-  try {
-    given = Buffer.from(signature, 'hex');
-  } catch {
-    return false;
-  }
+  // Buffer.from(_, 'hex') never throws on malformed hex; it truncates. The
+  // length check below is what actually rejects garbage input.
+  const given = Buffer.from(signature, 'hex');
   if (given.length !== expected.length) return false;
 
   return crypto.timingSafeEqual(given, expected);

@@ -39,7 +39,7 @@ then inside Claude Code, add the clone as a local marketplace by path (use `./`,
 
 The GitHub form above is the simplest path and needs no clone. Verify either way with `/plugin list` (third-rail shows enabled). Validation: `claude plugin validate .` passes clean from the repo root.
 
-**Restart after installing.** The skill and agent are available immediately, but the guard hook loads at session start. Quit Claude Code and relaunch once after installing, or the hook will not fire on your first edits.
+**Activate after installing.** The install summary ends with either "Plugin is now active." or "Run /reload-plugins to activate." Follow it: `/reload-plugins` arms the guard hook without restarting. Confirm with `/hooks`, which should list the third-rail PreToolUse guard.
 
 ## Try it in 5 minutes
 
@@ -102,7 +102,7 @@ The plugin has zero runtime dependencies: the hook and the route tracer are sing
 
 ## Honest limitations
 
-The route tracer is regex-based static analysis: it misses dynamic route registration, computed paths, and middleware spread across lines, and it says so in its own output. The chosen tradeoff is zero dependencies over an AST parser. The guard's acknowledgment file is a speed bump that records a decision; it is not access control. The agent reviews; it does not prove runtime behavior. Every blast-radius report ends with what it could not verify statically, on purpose.
+The route tracer is regex-based static analysis: it misses dynamic route registration, computed paths, and middleware spread across lines, and it says so in its own output. The chosen tradeoff is zero dependencies over an AST parser. The guard's acknowledgment file is a speed bump that records a decision; it is not access control. Two more limits, stated plainly: the guard watches the file-editing tools, so a shell command like `sed -i` through Bash is not intercepted; and Claude itself can create the acknowledgment file, so the ack is an audit trail of a considered decision, not a barrier the model cannot cross. Fleet-grade enforcement belongs in CI, which is the first with-more-time item. The agent reviews; it does not prove runtime behavior. Every blast-radius report ends with what it could not verify statically, on purpose.
 
 ## What I cut, and why
 

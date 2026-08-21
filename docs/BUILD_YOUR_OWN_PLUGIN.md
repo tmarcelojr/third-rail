@@ -96,7 +96,7 @@ claude plugin validate .
 Fix what it flags, then in Claude Code:
 
 ```
-/plugin marketplace add .
+/plugin marketplace add ./
 /plugin install your-plugin@your-plugin
 ```
 
