@@ -28,7 +28,9 @@ Exit 2 with a message naming the matched rule and the exact three steps to proce
 
 ## D7. The fixture is an answer key, not a toy
 
-`examples/legacy-shop` boots, serves, and passes its own tests while carrying six seeded bugs, each mapped to the runbook item that catches it (BUGS.md). Bugs were proven live before shipping: a forged unsigned webhook returns 200, a no-auth refund moves money, and the untouched verifier's tests run green. The pattern is borrowed from my scanner's eval fixture: known ground truth or the demo proves nothing.
+`examples/legacy-shop` boots, serves, and passes its own tests while carrying six seeded bugs, each mapped to the runbook item that catches it. Bugs were proven live before shipping: a forged unsigned webhook returns 200, a no-auth refund moves money, and the untouched verifier's tests run green. The pattern is borrowed from my scanner's eval fixture: known ground truth or the demo proves nothing.
+
+The inventory itself lives at `docs/FIXTURE_DEFECTS.md`, not inside the fixture. It started in `examples/legacy-shop/` and a live run showed the reviewer agent reading it and citing defect IDs from it. The agent had already found the auth gap on its own before opening that file, but an answer key inside the system under test invalidates the test regardless of the order things happened in. The inventory is written for the person evaluating this repo, so it belongs with the other documents written for them.
 
 ## D8. Quality-first, scope-fixed
 

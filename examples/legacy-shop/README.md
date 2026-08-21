@@ -10,4 +10,4 @@ npm start
 
 Zero API keys. The payment provider is simulated.
 
-Bug inventory with spoilers: [BUGS.md](./BUGS.md). Demo script: the root README of this repo.
+Defect inventory with spoilers: `docs/FIXTURE_DEFECTS.md` at the repo root, kept outside this directory so the reviewer agent cannot read it while analyzing the code. Demo script: the root README.

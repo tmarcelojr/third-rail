@@ -43,7 +43,7 @@ The GitHub form above is the simplest path and needs no clone. Verify either way
 
 ## Try it in 5 minutes
 
-The repo bundles `examples/legacy-shop`: a tiny Express monolith that boots, passes its own tests, and is seeded with real production bug patterns (inventory with spoilers in [examples/legacy-shop/BUGS.md](examples/legacy-shop/BUGS.md)).
+The repo bundles `examples/legacy-shop`: a tiny Express monolith that boots, passes its own tests, and is seeded with real production bug patterns. The defect inventory lives in [docs/FIXTURE_DEFECTS.md](docs/FIXTURE_DEFECTS.md), deliberately outside the fixture so the agent cannot read the answer key while reviewing the code. It lists every seeded defect with the commands to confirm each one without running the plugin.
 
 ```bash
 cd examples/legacy-shop
