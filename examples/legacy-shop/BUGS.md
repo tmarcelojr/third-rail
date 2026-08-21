@@ -4,36 +4,80 @@ Reference for the `legacy-shop` fixture. Contains answers for the demo; skip it 
 
 Each defect below is a pattern taken from production Node/Express code, not an invented example. Every one maps to an item in the `hardening-runbook` skill, which is how the blast-radius agent identifies it.
 
-## Inventory
+## Summary
 
-| ID | Defect | Location | Runbook item |
-|---|---|---|---|
-| D1 | Global JSON parser mounted before the webhook route, so the raw request body is unavailable for signature verification | `server.js:12`, `routes/webhooks.js:16` | 1. Raw body before JSON parser |
-| D2 | Failed signature check logs a warning and continues; handler returns 200 unconditionally | `routes/webhooks.js:22-25`, `:32` | 3. A webhook that returns 200 on failure will never be retried |
-| D3 | Correct signature verifier with passing tests and no call sites on any request path | `utils/verifySignature.js`, `test/verifySignature.test.js` | 2. A verifier with no callers protects nothing |
-| D4 | Refund route has no authentication middleware; sibling routes on the same router require it | `routes/billing.js:16` (compare `:7`, `:11`) | 5. Middleware order is a security property |
-| D5 | Login and password reset have no rate limiter; the `strict` tier exists and is never imported | `routes/auth.js:7`, `:15`, `middleware/rateLimiter.js:25` | 7. Rate limit the doors people force |
-| D6 | Webhook signature compared with `!==` rather than a timing-safe comparison | `routes/webhooks.js:22` | 8. IDs are not secrets |
+| ID | Defect | Runbook item |
+|:---|:---|:---|
+| D1 | Raw body destroyed before signature check | 1 |
+| D2 | Failed signature check does not stop processing | 3 |
+| D3 | Signature verifier has no call sites | 2 |
+| D4 | Refund route has no authentication | 5 |
+| D5 | Login and reset have no rate limiter | 7 |
+| D6 | Timing-unsafe signature comparison | 8 |
 
 D1 through D5 are the demo targets. D6 sits on an already-bypassed code path and is included for reviews that go deeper.
 
-## Detail
+---
 
-**D1.** `app.use(express.json())` at `server.js:12` runs before the webhook router is mounted at `:21`, so `express.raw()` is never reached for that route. The handler compensates by re-serializing `req.body` (`routes/webhooks.js:16`), which produces a different byte sequence than the provider signed whenever key order, whitespace, or unicode escaping differs.
+### D1. Raw body destroyed before signature check
 
-**D2.** The mismatch branch at `routes/webhooks.js:22` writes a warning and falls through to normal processing. The response at `:32` is always 200, so the provider treats every delivery as accepted, including ones the handler failed to process. Two consequences: forged events are fulfilled, and genuine failures are never retried.
+**Location:** `server.js:12`, `routes/webhooks.js:16`
+**Runbook item 1:** Raw body before JSON parser
 
-**D3.** `utils/verifySignature.js` implements constant-time comparison with a replay window and is covered by four passing tests. `grep -rn "verifySignature" --include="*.js" .` returns only the definition and the test file. The control exists and does not run.
+`app.use(express.json())` at `server.js:12` runs before the webhook router is mounted at `:21`, so `express.raw()` is never reached for that route.
 
-**D4.** `POST /refund` at `routes/billing.js:16` takes no middleware. `GET /invoices` at `:7` requires `requireAuth`; `POST /charge` at `:11` requires `requireAuth` and `requireAdmin`. The refund route moves money with less protection than the route that lists invoices.
+The handler compensates by re-serializing `req.body` at `routes/webhooks.js:16`. That produces a different byte sequence than the provider signed whenever key order, whitespace, or unicode escaping differs, so verification fails on payloads that are entirely legitimate.
 
-**D5.** `middleware/rateLimiter.js` exports two tiers. `standard` is applied to `/api/search` in `server.js`. `strict`, at `:25`, is defined for endpoints subject to credential attacks and is imported nowhere.
+### D2. Failed signature check does not stop processing
 
-**D6.** `signature !== expected` at `routes/webhooks.js:22` compares strings directly. The correct comparison is `crypto.timingSafeEqual` on buffers of equal length, as implemented in `utils/verifySignature.js`.
+**Location:** `routes/webhooks.js:22-25`, `:32`
+**Runbook item 3:** A webhook that returns 200 on failure will never be retried
+
+The mismatch branch at `:22` writes a warning and falls through to normal processing. The response at `:32` is always 200, so the provider treats every delivery as accepted, including ones the handler failed to process.
+
+Two consequences: forged events are fulfilled, and genuine failures are never retried.
+
+### D3. Signature verifier has no call sites
+
+**Location:** `utils/verifySignature.js`, `test/verifySignature.test.js`
+**Runbook item 2:** A verifier with no callers protects nothing
+
+`utils/verifySignature.js` implements constant-time comparison with a replay window, and four tests cover it. All four pass.
+
+Searching the request path for callers returns only the definition and the test file. The control exists and does not run.
+
+### D4. Refund route has no authentication
+
+**Location:** `routes/billing.js:16`
+**Runbook item 5:** Middleware order is a security property
+
+`POST /refund` at `:16` takes no middleware. Its siblings on the same router do: `GET /invoices` at `:7` requires `requireAuth`, and `POST /charge` at `:11` requires `requireAuth` and `requireAdmin`.
+
+The route that moves money out is less protected than the route that lists invoices.
+
+### D5. Login and reset have no rate limiter
+
+**Location:** `routes/auth.js:7`, `:15`, `middleware/rateLimiter.js:25`
+**Runbook item 7:** Rate limit the doors people force
+
+`middleware/rateLimiter.js` exports two tiers. `standard` is applied to `/api/search` in `server.js`.
+
+`strict` at `:25` is defined for endpoints subject to credential attacks. It is imported nowhere.
+
+### D6. Timing-unsafe signature comparison
+
+**Location:** `routes/webhooks.js:22`
+**Runbook item 8:** IDs are not secrets
+
+`signature !== expected` compares strings directly, which returns as soon as it finds a differing character.
+
+The correct comparison is `crypto.timingSafeEqual` on buffers of equal length, which is what `utils/verifySignature.js` already does.
+
+---
 
 ## Verifying the defects are real
 
-The fixture boots and its own tests pass, so the defects are not the result of broken code:
+The fixture boots and its own tests pass, so none of this is the result of broken code:
 
 ```bash
 npm install
@@ -41,28 +85,29 @@ npm test          # 4 passing
 npm start
 ```
 
-With the server running:
+With the server running, D1, D2, and D4 are observable directly:
 
 ```bash
-# D1, D2: unsigned event is accepted and acknowledged
+# Unsigned event is accepted and acknowledged
 curl -s -X POST localhost:3459/api/webhooks/payments \
   -H 'Content-Type: application/json' \
   -d '{"type":"payment.succeeded","id":"evt_forged"}'
 # => {"received":true}
 
-# D4: refund succeeds with no credentials
+# Refund succeeds with no credentials
 curl -s -X POST localhost:3459/api/billing/refund \
   -H 'Content-Type: application/json' \
   -d '{"orderId":"ord_1","amount":9999}'
 # => {"refunded":true,"orderId":"ord_1","amount":9999}
 
-# D4 control: the sibling route rejects the same request
+# The sibling route rejects the same unauthenticated request
 curl -s -X POST localhost:3459/api/billing/charge
 # => {"error":"auth required"}
 ```
 
+D3 and D5 are absences, so they are confirmed by search returning nothing:
+
 ```bash
-# D3, D5: neither the verifier nor the strict limiter has a call site
 grep -rn "verifySignature" --include="*.js" routes/ server.js
 grep -rn "strict" --include="*.js" routes/ server.js
 ```
