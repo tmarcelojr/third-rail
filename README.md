@@ -102,7 +102,7 @@ The plugin has zero runtime dependencies: the hook and the route tracer are sing
 
 ## Honest limitations
 
-The route tracer is regex-based static analysis: it misses dynamic route registration, computed paths, and middleware spread across lines, and it says so in its own output. The chosen tradeoff is zero dependencies over an AST parser. The guard's acknowledgment file is a speed bump that records a decision; it is not access control. Two more limits, stated plainly: the guard watches the file-editing tools, so a shell command like `sed -i` through Bash is not intercepted; and Claude itself can create the acknowledgment file, so the ack is an audit trail of a considered decision, not a barrier the model cannot cross. Fleet-grade enforcement belongs in CI, which is the first with-more-time item. The agent reviews; it does not prove runtime behavior. Every blast-radius report ends with what it could not verify statically, on purpose.
+The route tracer is regex-based static analysis: it misses dynamic route registration, computed paths, and middleware spread across lines, and it says so in its own output. The chosen tradeoff is zero dependencies over an AST parser. Two things keep that from being fatal: the guard hook matches on file paths and never parses code, so enforcement is unaffected by how routes are registered; and the agent treats the map as a starting inventory to verify with Read and Grep, then reports what it could not resolve rather than implying the map is complete. The plan for closing it properly is the first with-more-time item below. The guard's acknowledgment file is a speed bump that records a decision; it is not access control. Two more limits, stated plainly: the guard watches the file-editing tools, so a shell command like `sed -i` through Bash is not intercepted; and Claude itself can create the acknowledgment file, so the ack is an audit trail of a considered decision, not a barrier the model cannot cross. Fleet-grade enforcement belongs in CI, which is the first with-more-time item. The agent reviews; it does not prove runtime behavior. Every blast-radius report ends with what it could not verify statically, on purpose.
 
 ## What I cut, and why
 
@@ -113,7 +113,9 @@ The route tracer is regex-based static analysis: it misses dynamic route registr
 
 ## With more time
 
-Expand the eval suite and publish measured skill trigger rates against realistic prompts. Run blast-radius headless in CI so every PR touching a sensitive path gets a report as a comment. Distribute `.third-rail.json` and the runbook org-wide through managed settings so fifty teams inherit one paved road.
+**Runtime route introspection.** The most common objection to the tracer is the right one: plenty of production apps register routes in loops or build paths from variables, and a regex scan cannot see those. The complete fix is not a better parser, it is reading Express's own route table (`app._router.stack`) after the app boots, which contains every route regardless of how it was registered. The reason it is not the default: that requires executing the app's code, with its module-level side effects, env var requirements, and database connections. A static scan can never hurt you; a runtime scan can. So the next version ships both, static by default and runtime opt-in per repo.
+
+Beyond that: expand the eval suite and publish measured skill trigger rates against realistic prompts. Run blast-radius headless in CI so every PR touching a sensitive path gets a report as a comment. Distribute `.third-rail.json` and the runbook org-wide through managed settings so fifty teams inherit one paved road.
 
 ## For your own workflow
 
