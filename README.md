@@ -30,14 +30,16 @@ git clone https://github.com/tmarcelojr/third-rail.git
 cd third-rail
 ```
 
-then inside Claude Code:
+then inside Claude Code, add the clone as a local marketplace by path (use `./`, or the absolute path to the clone; a bare `.` is not accepted):
 
 ```
-/plugin marketplace add .
+/plugin marketplace add ./
 /plugin install third-rail@third-rail
 ```
 
-Verify: `/plugin list` shows third-rail enabled. Validation: `claude plugin validate .` passes clean from the repo root.
+The GitHub form above is the simplest path and needs no clone. Verify either way with `/plugin list` (third-rail shows enabled). Validation: `claude plugin validate .` passes clean from the repo root.
+
+**Restart after installing.** The skill and agent are available immediately, but the guard hook loads at session start. Quit Claude Code and relaunch once after installing, or the hook will not fire on your first edits.
 
 ## Try it in 5 minutes
 

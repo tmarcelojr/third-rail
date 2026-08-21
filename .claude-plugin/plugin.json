@@ -9,6 +9,7 @@
   },
   "repository": "https://github.com/tmarcelojr/third-rail",
   "license": "MIT",
+  "hooks": "./hooks/hooks.json",
   "keywords": [
     "express",
     "node",

@@ -34,6 +34,12 @@ Exit 2 with a message naming the matched rule and the exact three steps to proce
 
 Scope was frozen at design time: one agent, one skill, one hook, one fixture. New ideas during the build landed here as with-more-time items instead of in the tree. The lean shape is doctrine (grab-bag plugins are the ecosystem's documented failure mode), not a time constraint.
 
+## D9. The hook that validated but did not fire
+
+The plugin passed `claude plugin validate` and every component tested green in isolation, so I called it done. The first live install proved it was not: an edit to billing.js sailed straight through, unblocked. Two real defects hid behind a passing validator. The hook command was `node "..."` with nested quotes and the script lacked its executable bit, so the hook errored and a PreToolUse hook that errors fails open. And a stray `.third-rail-ack` left at the repo root during testing was disabling the guard for everything beneath it, because the ack lookup walked too many ancestors.
+
+This is the plugin's own thesis turned on its author: a control that is defined and tested but not verified as wired on the live path is not done. Fixes: direct-executable command matching the documented pattern, the exec bit committed as 100755 so it survives a clone, an explicit hooks declaration, and an ack scoped to the config directory or cwd so no distant stray can silently disable it. The acceptance check was the one that mattered: an edit to a guarded path is now blocked in a live session, not just in a unit test.
+
 ## With-more-time candidates captured during the build
 
 - Eval suite with measured trigger rates (three seed cases ship in `evals/`).

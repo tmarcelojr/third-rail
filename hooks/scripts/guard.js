@@ -88,9 +88,16 @@ function loadPatterns(fileDir, cwd) {
   return { patterns: DEFAULT_SENSITIVE, configPath: null };
 }
 
-function isAcknowledged(fileDir, cwd) {
+// The acknowledgment is scoped on purpose: it must sit next to the project's
+// .third-rail.json (the config it acknowledges) or in the working directory.
+// It deliberately does NOT walk arbitrary ancestors, so one stray ack far up
+// the tree cannot silently disable the guard for everything beneath it.
+function isAcknowledged(configPath, cwd) {
   if (process.env.THIRD_RAIL_ACK === '1') return true;
-  return Boolean(findUp(fileDir, ACK_FILE) || (cwd ? findUp(cwd, ACK_FILE, 3) : null));
+  const dirs = [];
+  if (configPath) dirs.push(path.dirname(configPath));
+  if (cwd) dirs.push(cwd);
+  return dirs.some((dir) => fs.existsSync(path.join(dir, ACK_FILE)));
 }
 
 function main() {
@@ -114,7 +121,7 @@ function main() {
   const matched = patterns.find((pattern) => globToRegExp(pattern).test(normalized));
   if (!matched) process.exit(0);
 
-  if (isAcknowledged(fileDir, cwd)) {
+  if (isAcknowledged(configPath, cwd)) {
     // Acknowledged: allow, but leave a one-line trace in the transcript.
     process.stderr.write(
       `third-rail: sensitive path (${matched}) edited under acknowledgment.\n`
