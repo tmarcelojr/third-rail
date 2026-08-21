@@ -67,6 +67,16 @@ This is an org runbook, not general advice. Every item below comes from a bug th
 2. Point to the test that exercises that path, not just the helper.
 3. Revert the fix locally and confirm that test fails with the production failure mode, then restore it. If reverting the fix turns nothing red, the test is not covering the fix.
 
+## Reporting a blast-radius review
+
+When the `blast-radius` agent returns, show the reader its findings, do not summarize them away. Reproduce verbatim, at minimum:
+
+- the `## Findings the runbook covers` list, each with its severity and runbook item number
+- the `## Findings the runbook does not cover` list
+- the `## Scoreboard` block exactly as written
+
+These are the output the reviewer is meant to act on, and the two lists are the only place the reader can see what the runbook caught versus what it did not. A paraphrase loses the item numbers, flattens the severities, and hides which findings were outside the runbook entirely. Add your own commentary after the report, not in place of it.
+
 ## What this runbook cannot see
 
 It covers change-time discipline on known-dangerous paths. It is not a vulnerability scanner, it does not know paths your config has not marked sensitive, and it cannot judge business logic. Say what was not checked when reporting work on these paths.
