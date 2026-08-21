@@ -1,0 +1,164 @@
+#!/usr/bin/env node
+/*
+ * third-rail-route-map <dir>
+ *
+ * Deterministic Express route and middleware mapper. Scans .js files and emits
+ * JSON: parser mounts (and their order), router mounts with prefixes, routes
+ * with their per-route middleware chains.
+ *
+ * Design stance: this script computes facts; the blast-radius agent interprets
+ * them. It is regex-based on purpose, so the plugin stays zero-dependency. The
+ * cost of that choice is stated in the "limitations" field of every output,
+ * because a map that hides its own blind spots is worse than no map.
+ */
+
+'use strict';
+
+const fs = require('fs');
+const path = require('path');
+
+const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage']);
+const ROUTE_RE = /\b(app|router)\.(get|post|put|patch|delete|all)\s*\(\s*(['"`])([^'"`]*)\3\s*(,)?\s*([^)\n]*)/g;
+const USE_PREFIX_RE = /\bapp\.use\s*\(\s*(['"`])([^'"`]*)\1\s*,\s*([A-Za-z_$][\w$.]*)/g;
+const USE_BARE_RE = /\bapp\.use\s*\(\s*([A-Za-z_$][\w$.]*(?:\([^)]*\))?)\s*\)/g;
+const PARSER_RE = /\bexpress\.(json|raw|urlencoded|text)\s*\(/g;
+const REQUIRE_RE = /(?:const|let|var)\s+(?:\{[^}]*\}|[A-Za-z_$][\w$]*)\s*=\s*require\s*\(\s*(['"])(\.[^'"]*)\1\s*\)/g;
+const REQUIRE_NAME_RE = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\s*\(\s*(['"])(\.[^'"]*)\2\s*\)/g;
+
+function listJsFiles(dir, out = []) {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const entry of entries) {
+    if (entry.name.startsWith('.') && entry.name !== '.') continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!SKIP_DIRS.has(entry.name)) listJsFiles(full, out);
+    } else if (entry.isFile() && entry.name.endsWith('.js')) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+function lineOf(source, index) {
+  return source.slice(0, index).split('\n').length;
+}
+
+function stripComments(src) {
+  // Blank out comments while preserving every newline, so lineOf() stays true.
+  let out = src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+  out = out.replace(/(^|[^:'"`])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
+  return out;
+}
+
+function parseMiddlewareList(argsTail) {
+  // argsTail is whatever followed the path argument on the same line.
+  // Named identifiers (rateLimiter.standard, requireAuth) are middleware;
+  // inline handlers ((req, res) => ..., function(...) or async (...)) are the terminal handler.
+  return argsTail
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => /^[A-Za-z_$][\w$.]*$/.test(part))
+    .filter((part) => !['req', 'res', 'next', 'function', 'async'].includes(part));
+}
+
+function scanFile(file, root) {
+  const source = stripComments(fs.readFileSync(file, 'utf8'));
+  const rel = path.relative(root, file) || path.basename(file);
+  const result = { routes: [], mounts: [], parsers: [], requires: {} };
+
+  let match;
+
+  REQUIRE_NAME_RE.lastIndex = 0;
+  while ((match = REQUIRE_NAME_RE.exec(source)) !== null) {
+    result.requires[match[1]] = match[3];
+  }
+
+  PARSER_RE.lastIndex = 0;
+  while ((match = PARSER_RE.exec(source)) !== null) {
+    result.parsers.push({ file: rel, line: lineOf(source, match.index), kind: `express.${match[1]}` });
+  }
+
+  USE_PREFIX_RE.lastIndex = 0;
+  while ((match = USE_PREFIX_RE.exec(source)) !== null) {
+    const target = match[3];
+    result.mounts.push({
+      file: rel,
+      line: lineOf(source, match.index),
+      prefix: match[2],
+      target,
+      targetFile: result.requires[target.split('.')[0]] || null
+    });
+  }
+
+  USE_BARE_RE.lastIndex = 0;
+  while ((match = USE_BARE_RE.exec(source)) !== null) {
+    result.mounts.push({
+      file: rel,
+      line: lineOf(source, match.index),
+      prefix: '(all paths)',
+      target: match[1],
+      targetFile: null
+    });
+  }
+
+  ROUTE_RE.lastIndex = 0;
+  while ((match = ROUTE_RE.exec(source)) !== null) {
+    result.routes.push({
+      file: rel,
+      line: lineOf(source, match.index),
+      owner: match[1],
+      method: match[2].toUpperCase(),
+      path: match[4],
+      middlewares: parseMiddlewareList(match[6] || '')
+    });
+  }
+
+  return result;
+}
+
+function main() {
+  const root = path.resolve(process.argv[2] || '.');
+  if (!fs.existsSync(root)) {
+    console.error(`third-rail-route-map: no such directory: ${root}`);
+    process.exit(1);
+  }
+
+  const files = listJsFiles(root);
+  const routes = [];
+  const mounts = [];
+  const parsers = [];
+
+  for (const file of files) {
+    try {
+      const scanned = scanFile(file, root);
+      routes.push(...scanned.routes);
+      mounts.push(...scanned.mounts);
+      parsers.push(...scanned.parsers);
+    } catch (err) {
+      console.error(`third-rail-route-map: skipped ${file}: ${err.message}`);
+    }
+  }
+
+  const output = {
+    root,
+    scannedFiles: files.length,
+    parsers,
+    mounts,
+    routes,
+    limitations: [
+      'Regex-based static scan: misses dynamic route registration, computed path strings, and middleware passed as spread arrays.',
+      'Middleware chains are read from the same line as the route declaration; chains built across multiple lines may be incomplete.',
+      'Mount-to-file resolution follows simple const-require patterns only.',
+      'Treat this map as a starting inventory to verify with Read and Grep, not as proof of absence.'
+    ]
+  };
+
+  process.stdout.write(JSON.stringify(output, null, 2) + '\n');
+}
+
+main();

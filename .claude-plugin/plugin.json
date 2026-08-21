@@ -1,0 +1,21 @@
+{
+  "name": "third-rail",
+  "displayName": "Third Rail",
+  "description": "Safe changes to the code everyone is afraid to touch. A deterministic guard hook, an org hardening runbook, and a blast-radius reviewer for legacy Node/Express monoliths.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Teo Marcelo",
+    "url": "https://github.com/tmarcelojr"
+  },
+  "repository": "https://github.com/tmarcelojr/third-rail",
+  "license": "MIT",
+  "keywords": [
+    "express",
+    "node",
+    "legacy",
+    "payments",
+    "webhooks",
+    "guardrails",
+    "code-review"
+  ]
+}

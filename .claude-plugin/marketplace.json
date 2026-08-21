@@ -1,0 +1,15 @@
+{
+  "name": "third-rail",
+  "description": "Marketplace for the third-rail plugin: safe changes to legacy Node/Express monoliths.",
+  "owner": {
+    "name": "Teo Marcelo",
+    "url": "https://github.com/tmarcelojr"
+  },
+  "plugins": [
+    {
+      "name": "third-rail",
+      "source": ".",
+      "description": "Safe changes to the code everyone is afraid to touch. A deterministic guard hook, an org hardening runbook, and a blast-radius reviewer for legacy Node/Express monoliths."
+    }
+  ]
+}

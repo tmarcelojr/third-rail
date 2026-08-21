@@ -1,0 +1,9 @@
+{
+  "sensitivePaths": [
+    "**/routes/billing.js",
+    "**/routes/webhooks.js",
+    "**/routes/auth.js",
+    "**/middleware/auth.js",
+    "**/utils/verifySignature.js"
+  ]
+}
