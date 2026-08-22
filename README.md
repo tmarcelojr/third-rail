@@ -10,7 +10,7 @@ Safe changes to the code everyone is afraid to touch.
 |---|---|---|
 | Hook (`hooks/`) | Deterministic guard on `Edit`/`Write`. Blocks casual edits to sensitive paths and points at the runbook. | Every edit, before it happens |
 | Skill (`skills/hardening-runbook`) | The org runbook: nine production-bought rules for payment, webhook, and auth code, gotchas first. | When work touches sensitive code, or the hook fires |
-| Agent (`agents/blast-radius.md`) | Safe-change reviewer. Maps affected routes and middleware chains with a bundled deterministic tracer, checks the change against the runbook, and reports every guard as verified (call site + test) or claimed only. | On demand, before or after a risky change |
+| Agent (`agents/blast-radius.md`) | Safe-change reviewer. Maps affected routes and middleware chains with a bundled deterministic tracer, checks the change against the runbook, and reports every guard as verified (call site plus a test that exercises it), wired but untested, or claimed only. | On demand, before or after a risky change |
 
 One sentence of design: the hook enforces (rules that are not executable get skipped), the skill knows (org knowledge generic review cannot have), the agent judges (a script computes the route map; the model interprets it).
 
@@ -39,11 +39,13 @@ then inside Claude Code, add the clone as a local marketplace by path (use `./`,
 
 The GitHub form above is the simplest path and needs no clone. Verify either way with `/plugin list` (third-rail shows enabled). Validation: `claude plugin validate .` passes clean from the repo root.
 
-**Activate after installing.** The install summary ends with either "Plugin is now active." or "Run /reload-plugins to activate." Follow it: `/reload-plugins` arms the guard hook without restarting. Confirm with `/hooks`, which should list the third-rail PreToolUse guard.
+**Activate after installing.** If the install summary asks you to run `/reload-plugins`, do so; that arms the guard hook without restarting. Confirm either way with `/hooks`, which should list the third-rail PreToolUse guard, and `/plugin list`, which should show third-rail enabled.
 
 ## Try it in 5 minutes
 
-The repo bundles `examples/legacy-shop`: a tiny Express monolith that boots, passes its own tests, and is seeded with real production bug patterns. The defect inventory lives in [docs/FIXTURE_DEFECTS.md](docs/FIXTURE_DEFECTS.md), deliberately outside the fixture so the agent cannot read the answer key while reviewing the code. It lists every seeded defect with the commands to confirm each one without running the plugin.
+The repo bundles `examples/legacy-shop`: a tiny Express monolith that boots, passes its own tests, and is seeded with real production bug patterns. The defect inventory lives in [docs/FIXTURE_DEFECTS.md](docs/FIXTURE_DEFECTS.md), outside the fixture so it is not sitting in the directory under review, and it lists every seeded defect with the commands to confirm each one without running the plugin.
+
+To be clear about what the fixture is: a demonstration, not a blind test. The defects were chosen to exercise the runbook, so the runbook necessarily describes the same classes of bug, and both files live in this repo where a determined reviewer could find either. It shows the plugin working on realistic code with known answers. It does not measure how the reviewer performs on code it has no prior knowledge of; that is what an eval suite is for, and building a real one is the second with-more-time item.
 
 ```bash
 cd examples/legacy-shop
@@ -61,7 +63,9 @@ claude
 
    > Use the blast-radius agent to review the billing and webhook paths of this app
 
-   Expect it to find, with file:line: the global `express.json()` destroying the webhook's raw body, the signature check that logs a mismatch and processes the event anyway behind an always-200, a correct constant-time verifier with passing tests and zero call sites, the refund route missing the auth its sibling routes carry, and login missing the rate limiter that `/api/search` has.
+   Expect it to find, with file:line: the global `express.json()` destroying the webhook's raw body, the signature check that logs a mismatch and processes the event anyway behind an always-200, a correct constant-time verifier with passing tests and zero call sites, and the refund route missing the auth its sibling routes carry.
+
+   Expect it to also name `routes/auth.js` under "Adjacent, not reviewed" without digging into it. Login has no rate limiter while `/api/search` does, but auth is outside the blast radius of a billing and webhook change, so the reviewer flags that the file exists and leaves it for the review that fires when someone edits it. Point the reviewer at `routes/auth.js` if you want that one investigated.
 
 3. Acknowledge and fix:
 
@@ -99,10 +103,10 @@ Measured from this repo's files (tokens estimated at words x 1.3):
 
 | State | Cost |
 |---|---|
-| Idle (always loaded) | ~185 tokens: the skill and agent descriptions |
+| Idle (always loaded) | ~140 tokens: the skill and agent descriptions |
 | Guard hook | 0 tokens idle; runs out of process. ~120 tokens of message only when it blocks |
 | Skill triggered | ~1,250 tokens, loaded only when sensitive work starts |
-| Agent invoked | ~1,650 tokens in its own context; the main conversation pays only for the report, roughly 1,000 to 1,800 tokens depending on findings |
+| Agent invoked | The agent definition is ~1,900 tokens, but that is its size, not its cost. A real run consumed ~35,000 tokens inside its own context reading files and running greps; your conversation pays only for the returned report, which measured ~1,900 tokens on a run with seven findings |
 
 ## Supply chain
 
@@ -123,7 +127,7 @@ The route tracer is regex-based static analysis: it misses dynamic route registr
 
 **Runtime route introspection.** The most common objection to the tracer is the right one: plenty of production apps register routes in loops or build paths from variables, and a regex scan cannot see those. The complete fix is not a better parser, it is reading Express's own route table (`app._router.stack`) after the app boots, which contains every route regardless of how it was registered. The reason it is not the default: that requires executing the app's code, with its module-level side effects, env var requirements, and database connections. A static scan can never hurt you; a runtime scan can. So the next version ships both, static by default and runtime opt-in per repo.
 
-Beyond that: expand the eval suite and publish measured skill trigger rates against realistic prompts. Run blast-radius headless in CI so every PR touching a sensitive path gets a report as a comment. Distribute `.third-rail.json` and the runbook org-wide through managed settings so fifty teams inherit one paved road.
+Three seed eval cases ship in `evals/`, runnable with `claude plugin eval .` where that command is enabled (it is in early access, and prints a notice and exits otherwise). Beyond that: expand the eval suite and publish measured skill trigger rates against realistic prompts. Run blast-radius headless in CI so every PR touching a sensitive path gets a report as a comment. Distribute `.third-rail.json` and the runbook org-wide through managed settings so fifty teams inherit one paved road.
 
 ## For your own workflow
 

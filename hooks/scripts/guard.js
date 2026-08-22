@@ -127,20 +127,37 @@ function findUp(startDir, fileName, maxLevels = 10) {
   return null;
 }
 
+// Returns { patterns, configPath, configProblem }. A config that exists but
+// cannot be used is reported as such rather than being silently swapped for
+// the defaults: for a team whose org config IS the control surface, a typo
+// that quietly reinstates a stranger's policy is worse than a loud failure.
 function loadConfig(fileDir, cwd) {
   const configPath =
     findUp(fileDir, CONFIG_FILE) || (cwd ? findUp(cwd, CONFIG_FILE, 3) : null);
-  if (!configPath) return { patterns: null, configPath: null };
+  if (!configPath) return { patterns: null, configPath: null, configProblem: null };
+
+  let config;
   try {
-    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
-    const patterns = Array.isArray(config.sensitivePaths)
-      ? config.sensitivePaths.filter((p) => typeof p === 'string' && p.length > 0)
-      : [];
-    if (patterns.length > 0) return { patterns, configPath };
-  } catch {
-    // Unreadable or junk config: fall through to defaults rather than crashing.
+    config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+  } catch (err) {
+    return { patterns: null, configPath, configProblem: `could not be parsed (${err.message})` };
   }
-  return { patterns: null, configPath: null };
+
+  if (!Array.isArray(config.sensitivePaths)) {
+    return { patterns: null, configPath, configProblem: 'has no sensitivePaths array' };
+  }
+
+  const patterns = config.sensitivePaths.filter((p) => typeof p === 'string' && p.length > 0);
+
+  // An explicit empty list is a decision, not a mistake: this repo has no
+  // sensitive paths, so the guard stays out of the way.
+  if (config.sensitivePaths.length === 0) {
+    return { patterns: [], configPath, configProblem: null };
+  }
+  if (patterns.length === 0) {
+    return { patterns: null, configPath, configProblem: 'sensitivePaths contained no usable string patterns' };
+  }
+  return { patterns, configPath, configProblem: null };
 }
 
 // The acknowledgment is scoped on purpose: it must sit next to the project's
@@ -159,6 +176,11 @@ function isAcknowledged(configPath, cwd) {
       return false;
     }
   });
+}
+
+function truncate(value, max = 60) {
+  const s = String(value);
+  return s.length > max ? `${s.slice(0, max)}...` : s;
 }
 
 function block(normalized, reason) {
@@ -184,26 +206,38 @@ function main() {
     process.exit(0); // Malformed input: do not block on a guard bug.
   }
 
+  if (!input || typeof input !== 'object') process.exit(0);
   const toolInput = input.tool_input || {};
-  const filePath = toolInput.file_path || toolInput.filePath || '';
-  if (!filePath || typeof filePath !== 'string') process.exit(0);
+  const rawPath = toolInput.file_path || toolInput.filePath || '';
+  if (!rawPath || typeof rawPath !== 'string') process.exit(0);
 
-  const normalized = filePath.replace(/\\/g, '/');
+  // Resolve before matching, so routes/sub/../billing.js and a symlink pointing
+  // at a guarded file are both seen for what they are.
+  let normalized = path.normalize(rawPath).replace(/\\/g, '/');
+  try {
+    normalized = fs.realpathSync(normalized).replace(/\\/g, '/');
+  } catch {
+    // Target does not exist yet (a Write creating a new file). The normalized
+    // path is still the right thing to match against.
+  }
+
   const fileDir = path.dirname(normalized);
   const cwd = typeof input.cwd === 'string' ? input.cwd : process.cwd();
 
-  const { patterns, configPath } = loadConfig(fileDir, cwd);
+  const { patterns, configPath, configProblem } = loadConfig(fileDir, cwd);
 
   let reason = null;
   if (patterns) {
     const matched = patterns.find((pattern) => matchesGlob(pattern, normalized));
     if (matched) {
-      reason = `matched "${matched}" from ${configPath}. This code class has burned this org before`;
+      reason = `matched "${truncate(matched)}" from ${configPath}. This code class has burned this org before`;
     }
   } else {
     const word = matchesDefaultTokens(normalized);
     if (word) {
-      reason = `filename contains the sensitive word "${word}" from third-rail's default list; no ${CONFIG_FILE} found, add one to tune this to your repo`;
+      reason = configProblem
+        ? `filename contains the sensitive word "${word}" from third-rail's default list. Note: ${configPath} ${configProblem}, so your repo's own rules are NOT in effect; fix that file to restore them`
+        : `filename contains the sensitive word "${word}" from third-rail's default list; no ${CONFIG_FILE} found, add one to tune this to your repo`;
     }
   }
 

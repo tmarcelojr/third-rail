@@ -2,7 +2,7 @@
 
 Reference for the `legacy-shop` fixture. Contains answers for the demo; skip it if you want to run the demo cold.
 
-Each defect below is a pattern taken from production Node/Express code, not an invented example. Every one maps to an item in the `hardening-runbook` skill, which is how the blast-radius agent identifies it.
+Each defect below is a pattern taken from production Node/Express code, not an invented example. Five of the six map to an item in the `hardening-runbook` skill, which is how the blast-radius agent identifies them. The sixth deliberately maps to nothing, for the reason given under D6.
 
 ## Summary
 
@@ -13,9 +13,9 @@ Each defect below is a pattern taken from production Node/Express code, not an i
 | D3 | Signature verifier has no call sites | 2 |
 | D4 | Refund route has no authentication | 5 |
 | D5 | Login and reset have no rate limiter | 7 |
-| D6 | Timing-unsafe signature comparison | 8 |
+| D6 | Timing-unsafe signature comparison | none, deliberately |
 
-D1 through D5 are the demo targets. D6 sits on an already-bypassed code path and is included for reviews that go deeper.
+D1 through D5 are the demo targets, each with a runbook item behind it. D6 has no runbook item on purpose: it is there to separate a reviewer that matches a checklist from one that reads the code.
 
 ---
 
@@ -44,12 +44,12 @@ Two consequences: forged events are fulfilled, and genuine failures are never re
 
 `utils/verifySignature.js` implements constant-time comparison with a replay window, and four tests cover it. All four pass.
 
-Searching the request path for callers returns only the definition and the test file. The control exists and does not run.
+Searching the request path for callers returns nothing at all: the only mentions anywhere are the definition and its test. The control exists and does not run.
 
 ### D4. Refund route has no authentication
 
 **Location:** `routes/billing.js:16`
-**Runbook item 5:** Middleware order is a security property
+**Runbook item 5:** Middleware order and coverage are security properties
 
 `POST /refund` at `:16` takes no middleware. Its siblings on the same router do: `GET /invoices` at `:7` requires `requireAuth`, and `POST /charge` at `:11` requires `requireAuth` and `requireAdmin`.
 
@@ -67,7 +67,9 @@ The route that moves money out is less protected than the route that lists invoi
 ### D6. Timing-unsafe signature comparison
 
 **Location:** `routes/webhooks.js:22`
-**Runbook item 8:** IDs are not secrets
+**Runbook item:** none. This one is here to be caught without a rule for it.
+
+The nine runbook items are one org's scar tissue, which is never the complete set of ways this code can fail. Constant-time comparison of a signature is a real bug class that nobody at this org has been burned by yet, so nothing in the runbook describes it. A reviewer that only matches the checklist will miss D6 entirely. A reviewer that reasons about the code should report it under "Findings the runbook does not cover," which is the section that tells an org what its runbook is missing.
 
 `signature !== expected` compares strings directly, which returns as soon as it finds a differing character.
 

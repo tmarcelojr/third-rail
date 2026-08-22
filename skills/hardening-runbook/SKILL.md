@@ -31,11 +31,11 @@ This is an org runbook, not general advice. Every item below comes from a bug th
 
 **Rule:** record processed event ids and no-op on replay. Fail open on the dedup lookup only if every handler underneath is independently idempotent, and write that reasoning down.
 
-## 5. Middleware order is a security property
+## 5. Middleware order and coverage are security properties
 
-**Gotcha:** reordering `app.use()` lines looks like tidying and is actually a security change. `trust proxy` set to `true` (instead of `1`) lets clients spoof X-Forwarded-For and rotate rate-limit buckets.
+**Gotcha:** two failures live here. Reordering `app.use()` lines looks like tidying and is actually a security change; `trust proxy` set to `true` instead of `1` lets clients spoof X-Forwarded-For and rotate rate-limit buckets. And a route that never got a guard its siblings carry is invisible in review, because nothing is wrong on the line you are reading. The refund endpoint added during an incident, next to two routes that both require auth, is the shape this takes.
 
-**Rule:** `trust proxy` is exactly the number of hops you control, never `true`. Auth runs before entitlement checks. The error handler mounts last. Treat parser and middleware order as part of the security model and review it as such.
+**Rule:** `trust proxy` is exactly the number of hops you control, never `true`. Auth runs before entitlement checks. The error handler mounts last. And read every route on a router against its siblings: a money-moving route with a shorter middleware chain than the route that merely lists invoices is a finding, not a style difference.
 
 ## 6. The irreversible claim runs last
 

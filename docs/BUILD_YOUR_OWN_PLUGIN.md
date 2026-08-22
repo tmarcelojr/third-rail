@@ -46,10 +46,13 @@ Two things make skills work or fail:
 
 If the job is "know the rules while editing," the skill alone is enough. Stop here and ship.
 
-Add an agent when the job is read, then trace, then judge: reviewing a change's blast radius, walking a dependency graph, checking claims against reality. Create `agents/<reviewer>.md` with frontmatter (`name`, `description`, `tools: Read, Grep, Glob, Bash`) and write the procedure as numbered steps ending in a report format. Two patterns worth stealing from third-rail:
+Add an agent when the job is read, then trace, then judge: reviewing a change's blast radius, walking a dependency graph, checking claims against reality. Create `agents/<reviewer>.md` with frontmatter (`name`, `description`, `tools`) and write the procedure as numbered steps ending in a report format. Three patterns worth stealing from third-rail:
 
 - Let a small deterministic script compute the facts (route maps, lineage, plan diffs) and make the agent interpret them. Scripts do not hallucinate inventory.
 - Make the report say what it could NOT verify. A review that hides its blind spots is worse than no review.
+- End the report with a short counts-only scoreboard, and tell the caller to relay it. Whoever invoked your agent will summarize a long report into a few lines, and the structure you designed never reaches the reader.
+
+**The `tools` list is an allowlist, and it bites.** If your agent's procedure says "load the runbook skill," then `Skill` has to be in that list or the instruction is dead. I shipped `tools: Read, Grep, Glob, Bash` on an agent whose step 5 was "load the skill," and it could not. It produced plausible output anyway by half-remembering, which is the worst failure mode: no error, just a review against a standard that never loaded.
 
 ## Step 4: Add a hook only for "always," never for "usually" (10 minutes, usually skipped)
 
@@ -57,7 +60,30 @@ A hook is a shell script that runs on events like PreToolUse, outside the model.
 
 If you would accept the model occasionally forgetting the rule, it is not a hook, it is a line in the skill.
 
-`hooks/hooks.json` registers the script; the script reads JSON from stdin and exits 0 to allow or 2 to block with a message on stderr. Keep it dependency-free and make the block message teach: say which rule matched and what to do next, not just "no." Steal `hooks/scripts/guard.js` from third-rail as a starting point.
+`hooks/hooks.json` registers the script:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/guard.js",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The script reads JSON from stdin and exits 0 to allow or 2 to block with a message on stderr. Keep it dependency-free and make the block message teach: say which rule matched and what to do next, not just "no." Steal `hooks/scripts/guard.js` from third-rail as a starting point.
+
+**Three things that will cost you an afternoon if you skip them.** They cost me one. Start the script with a shebang (`#!/usr/bin/env node`), run `chmod +x` on it, and confirm git recorded the executable bit with `git ls-files -s hooks/scripts/guard.js` (you want `100755`, not `100644`, or every clone gets a script that cannot run). Do not declare the hooks file in `plugin.json`; `hooks/hooks.json` loads automatically from that path, and declaring it again collides with itself and stops the whole plugin loading. And know that a PreToolUse hook which fails to run **fails open**: the edit proceeds, silently. A broken guard and no guard look identical from the outside, so test the block before you trust it.
 
 ## Step 5: Wrap it as a plugin (5 minutes)
 
@@ -74,7 +100,12 @@ your-plugin/
 `.claude-plugin/plugin.json`:
 
 ```json
-{ "name": "your-plugin", "description": "One sentence.", "version": "0.1.0" }
+{
+  "name": "your-plugin",
+  "description": "One sentence about the workflow it makes safer.",
+  "version": "0.1.0",
+  "author": { "name": "Your Team" }
+}
 ```
 
 `.claude-plugin/marketplace.json`:
@@ -82,8 +113,9 @@ your-plugin/
 ```json
 {
   "name": "your-plugin",
+  "description": "Marketplace for your-plugin.",
   "owner": { "name": "Your Name" },
-  "plugins": [{ "name": "your-plugin", "source": "." }]
+  "plugins": [{ "name": "your-plugin", "source": "./" }]
 }
 ```
 
@@ -108,7 +140,8 @@ Now the real test: push to a repo, have a teammate clone it, run the same two co
 |---|---|
 | `validate` fails | `skills/` or `agents/` accidentally placed inside `.claude-plugin/`. Only the two json files live there. |
 | Skill never triggers | Description too vague. Rewrite with the concrete words and file types people actually use, reinstall, retest. |
-| Hook fires constantly or never | Path patterns too broad or too narrow. Print the incoming file path from the script while tuning. |
+| Hook never fires at all | Usually the script, not the patterns: missing shebang, missing executable bit, or a `hooks` entry declared in `plugin.json` that collides with the auto-loaded `hooks/hooks.json`. Check `/hooks` lists your entry, then run the script by hand with a sample payload piped to stdin. |
+| Hook fires constantly or on the wrong files | Path patterns too broad or too narrow. Print the incoming file path from the script while tuning. |
 
 ## What to build next
 
