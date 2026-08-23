@@ -99,7 +99,7 @@ Anthropic ships general-purpose `code-review` and `claude-security` plugins. thi
 
 ## What it costs you in time
 
-A first review on a guarded path takes two to four minutes end to end, most of it the reviewer agent mapping routes and checking the change against the runbook.
+A first review on a guarded path takes three to five minutes end to end, most of it the reviewer agent mapping routes and checking the change against the runbook.
 
 Read that number against how the guard actually fires. It only triggers on paths listed in `.third-rail.json`, which on most codebases is a handful of files, so the majority of your editing never touches it. And the acknowledgment file persists: the first edit to billing today costs a few minutes, the next twenty cost nothing. The wait is a pre-flight check when you start work on dangerous code, not a tax on every save.
 
