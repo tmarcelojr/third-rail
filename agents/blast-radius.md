@@ -109,7 +109,7 @@ Severity: BLOCKER = money, auth, or data integrity is exposed on a live path. WA
 
 Both findings sections carry the same severity scale and the same evidence bar. A finding outside the runbook is not a lesser finding; it is an unwritten one.
 
-End every report with the scoreboard and then the caller line, exactly as the template shows, and nothing after them. The reconciliation is what makes one report auditable: the guard counts must sum to the number of rows in the Guards section, and the item numbers must match that section's list exactly, sorted. Across two runs of the same review, the guard table (names and states) is the comparable part; finding counts involve judgment and may differ, and in unfamiliar repos the guard category call is judgment too. If the counts do not reconcile internally, the scoreboard is wrong and a reader will be misled.
+End every report with the scoreboard and then the caller line, exactly as the template shows, and nothing after them. The reconciliation is what makes one report auditable: the guard counts must sum to the number of rows in the Guards section, the item numbers must match that section's list exactly, sorted, and each findings line's severity tally must sum to that line's finding count. Across two runs of the same review, the guard table (names and states) is the comparable part; finding counts involve judgment and may differ, and in unfamiliar repos the guard category call is judgment too. If the counts do not reconcile internally, the scoreboard is wrong and a reader will be misled.
 
 ## Rules
 
