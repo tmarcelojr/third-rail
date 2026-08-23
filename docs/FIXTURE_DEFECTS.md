@@ -58,6 +58,8 @@ Two consequences: forged events are fulfilled, and genuine failures are never re
 
 Searching the request path for callers returns nothing at all: the only mentions anywhere are the definition and its test. The control exists and does not run.
 
+The seeded comments stage how this happens in real codebases: the verifier is dated to a "2023 security push" (`utils/verifySignature.js:3`) while the handler's inline check carries a 2022 skip-it-for-now TODO (`routes/webhooks.js:23`). Two efforts, two years apart, never connected — and every test and dashboard stays green throughout. That gap between "the fix exists" and "the fix runs" is the bug class runbook item 2 exists for.
+
 ### D4. Refund route has no authentication
 
 **Location:** `routes/billing.js:16`
