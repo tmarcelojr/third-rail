@@ -62,3 +62,4 @@ Two corrections admitted rather than smoothed over. The relay instruction now li
 - Headless blast-radius in CI commenting on PRs that touch sensitive paths.
 - Org-wide distribution of `.third-rail.json` and the runbook via managed settings.
 - A `strict`-tier limiter check: the fixture's unused export mirrors a real pattern worth its own runbook line.
+- A warn-only Bash heuristic for guarded paths. Multi-model testing (2026-08-22) showed shell-heavy models route around the Edit-tool matcher entirely: two Opus runs edited billing.js through heredocs and the guard never fired, while the runbook skill still loaded and carried the discipline. Measured, then deliberately scoped out: a blocking version would fire on innocent reads like `grep billing.js` and miss interpolated writes, so edit-time shell coverage stays a warn-only candidate and CI remains the model-independent enforcement layer.
