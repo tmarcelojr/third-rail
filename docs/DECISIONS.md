@@ -1,6 +1,6 @@
 # Decision log
 
-Steering record for the third-rail build: where the human overrode the tool, and why. Kept because judgment is the deliverable; the code is just its residue. Entries D1 through D8 are from 2026-08-20; D9 and D10 from 2026-08-21. Written during the build and reviewed by the author before submission.
+Steering record for the third-rail build: where the human overrode the tool, and why. Kept because judgment is the deliverable; the code is just its residue. Entries D1 through D8 are from 2026-08-20; D9 and D10 from 2026-08-21; D11 from 2026-08-22. Written during the build and reviewed by the author before submission.
 
 ## D1. Persona: rejected the AI's first recommendation
 
@@ -47,6 +47,14 @@ This is the plugin's own thesis turned on its author: a control that is defined 
 Before shipping, two independent review agents graded the repo cold: one simulating the hiring panel, one pure red team instructed to execute every claim. The red team fresh-cloned the repo and ran a real CLI install, and found that the explicit `"hooks"` declaration added in D9 makes the installed plugin fail to load entirely on current Claude Code (duplicate-hooks error: the standard hooks/hooks.json is auto-loaded, so declaring it again collides with itself). The validator passes regardless. That is the D9 failure mode recurring on the D9 fix itself, and it was caught only because the acceptance test moved one level closer to reality: unit test, then live session, then fresh-clone install. Each level caught what the previous one could not.
 
 Fixes from this round, all re-verified: removed the duplicate hooks declaration (auto-load is the correct mechanism); hardened the guard against junk config entries and pathological glob patterns (both crash and hang reproduced by the red team, both now fail open with a note); replaced the over-broad default globs with whole-word token matching on code files so an unconfigured install no longer blocks files like authors-list.js in unrelated repos; disclosed the Bash bypass and the model-can-ack limits in the README; aligned the fixture's bug table to the runbook's item numbers (a later round found two of those mappings were numerically right and semantically wrong, and fixed both); tightened the hook eval grader to require the block be surfaced to the human, not silently acknowledged.
+
+## D11. The consolidation round: why the fixes kept needing fixes
+
+2026-08-22. Two fresh reviewers, one following the README cold and executing every step, one red-teaming only the fix commits, returned 33 verified findings between them. Two of the six previous fixes had not worked at runtime: the report-relay instruction had been added to the agent's own system prompt, where the caller never reads it, and the "deterministic" guard count still varied across byte-identical runs (four live runs, four different denominators) because the guard's category was pinned but its membership in the review was not. Worse, the fix round itself had introduced instances four through six of the plugin's own defined-but-not-wired class: a NotebookEdit matcher entry whose payload key the guard never read, a config-problem warning computed but surfaced on only one branch, and a cwd read after the path resolution that needed it.
+
+Staring at all three rounds together produced the diagnosis this round is built on. First, facts were duplicated across files with no owner, so every fix updated one copy and left the rest stale; now every duplicated fact has one owner file and other mentions point instead of restating. Second, runtime boundaries were verified by reading, never by executing; now `test/smoke.mjs` executes every boundary a script can reach: real hook payloads, both symlink directions, a deliberately broken config, a golden route map, and wiring checks. Third, determinism was promised in the judgment layer, where it is impossible, and absent in the code layer, where it is cheap; now the guard table's membership is pinned to two rules bounded by the committed config, and the comparability claim is cut down to exactly what those rules guarantee.
+
+Two corrections admitted rather than smoothed over. The relay instruction now lives at the tail of the report itself, the one place the caller must read to relay anything at all. And this entry supersedes D7's "each mapped to the runbook item that catches it": five of the six map, and the sixth's unmapped state is the point.
 
 ## With-more-time candidates captured during the build
 

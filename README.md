@@ -8,7 +8,7 @@ Safe changes to the code everyone is afraid to touch.
 
 | Component | What | When it acts |
 |---|---|---|
-| Hook (`hooks/`) | Deterministic guard on `Edit`/`Write`. Blocks casual edits to sensitive paths and points at the runbook. | Every edit, before it happens |
+| Hook (`hooks/`) | Deterministic guard on the file-editing tools (live matcher: [hooks/hooks.json](hooks/hooks.json)). Blocks casual edits to sensitive paths and points at the runbook. | Every edit, before it happens |
 | Skill (`skills/hardening-runbook`) | The org runbook: nine production-bought rules for payment, webhook, and auth code, gotchas first. | When work touches sensitive code, or the hook fires |
 | Agent (`agents/blast-radius.md`) | Safe-change reviewer. Maps affected routes and middleware chains with a bundled deterministic tracer, checks the change against the runbook, and reports every guard as verified (call site plus a test that exercises it), wired but untested, or claimed only. | On demand, before or after a risky change |
 
@@ -43,9 +43,9 @@ The GitHub form above is the simplest path and needs no clone. Verify either way
 
 ## Try it in 5 minutes
 
-The repo bundles `examples/legacy-shop`: a tiny Express monolith that boots, passes its own tests, and is seeded with real production bug patterns. The defect inventory lives in [docs/FIXTURE_DEFECTS.md](docs/FIXTURE_DEFECTS.md), outside the fixture so it is not sitting in the directory under review, and it lists every seeded defect with the commands to confirm each one without running the plugin.
+The repo bundles `examples/legacy-shop`: a tiny Express monolith that boots, passes its own tests, and is seeded with real production bug patterns. The defect inventory lives in [docs/FIXTURE_DEFECTS.md](docs/FIXTURE_DEFECTS.md), outside the fixture so it is not sitting in the directory under review, and it lists every seeded defect, nearly all with commands to confirm them without running the plugin.
 
-To be clear about what the fixture is: a demonstration, not a blind test. The defects were chosen to exercise the runbook, so the runbook necessarily describes the same classes of bug, and both files live in this repo where a determined reviewer could find either. It shows the plugin working on realistic code with known answers. It does not measure how the reviewer performs on code it has no prior knowledge of; that is what an eval suite is for, and building a real one is the second with-more-time item.
+To be clear about what the fixture is: a demonstration, not a blind test. The defects were chosen to exercise the runbook, so the runbook necessarily describes the same classes of bug, and both files live in this repo where a determined reviewer could find either. It shows the plugin working on realistic code with known answers. It does not measure how the reviewer performs on code it has no prior knowledge of; that is what an eval suite is for, and building a real one is a with-more-time item.
 
 ```bash
 cd examples/legacy-shop
@@ -85,6 +85,14 @@ curl -s -X POST localhost:3459/api/billing/refund -H 'Content-Type: application/
 
 A forged, unsigned webhook returns `{"received":true}` and a no-auth refund succeeds. That is the monolith this plugin exists for.
 
+## Verify the wiring
+
+```bash
+node test/smoke.mjs
+```
+
+Feeds the guard real hook payloads (both symlink directions, relative paths, a deliberately broken config), diffs the route tracer's output on the fixture against a committed golden map, and checks that every declared component is actually wired: manifest paths resolve, the agent's tool list includes what its procedure uses, every file:line in the defect inventory exists. The decision log records this plugin failing its own defined-but-not-wired test repeatedly ([docs/DECISIONS.md](docs/DECISIONS.md), D9-D11); this test is that lesson made mechanical.
+
 ## What this is not
 
 Anthropic ships general-purpose `code-review` and `claude-security` plugins. third-rail is deliberately not that: it is the layer generic review cannot be, your org's runbook and your org's sensitive paths, enforced deterministically at edit time and reviewed with judgment on demand. The runbook that ships here is one real org's starting point; the intent is that you edit `skills/hardening-runbook/SKILL.md` and `.third-rail.json` until they are yours. A hook rather than an MCP server because the persona's pain is enforcement at the moment of change, not access to an external system.
@@ -95,18 +103,18 @@ A first review on a guarded path takes two to four minutes end to end, most of i
 
 Read that number against how the guard actually fires. It only triggers on paths listed in `.third-rail.json`, which on most codebases is a handful of files, so the majority of your editing never touches it. And the acknowledgment file persists: the first edit to billing today costs a few minutes, the next twenty cost nothing. The wait is a pre-flight check when you start work on dangerous code, not a tax on every save.
 
-If your team cannot accept any wait at edit time, the same review belongs in CI, where it costs nobody anything because it runs after you have moved on. That is the first with-more-time item below.
+If your team cannot accept any wait at edit time, the same review belongs in CI, where it costs nobody anything because it runs after you have moved on. That is a with-more-time item below.
 
 ## Context cost
 
-Measured from this repo's files (tokens estimated at words x 1.3):
+Measured, not estimated: idle and on-invoke sizes from `claude plugin details third-rail`, run costs from live sessions.
 
 | State | Cost |
 |---|---|
-| Idle (always loaded) | ~140 tokens: the skill and agent descriptions |
+| Idle (always loaded) | ~260 tokens: the skill and agent descriptions |
 | Guard hook | 0 tokens idle; runs out of process. ~120 tokens of message only when it blocks |
-| Skill triggered | ~1,250 tokens, loaded only when sensitive work starts |
-| Agent invoked | The agent definition is ~1,900 tokens, but that is its size, not its cost. A real run consumed ~35,000 tokens inside its own context reading files and running greps; your conversation pays only for the returned report, which measured ~1,900 tokens on a run with seven findings |
+| Skill triggered | ~2,000 tokens, loaded only when sensitive work starts |
+| Agent invoked | The agent definition is ~3,100 tokens, but that is its size, not its cost. Live runs consumed 57,000-60,000 tokens inside the agent's own context reading files and running greps; your conversation pays only for the returned report, which measured ~1,900 tokens on a run with seven findings |
 
 ## Supply chain
 
@@ -114,14 +122,14 @@ The plugin has zero runtime dependencies: the hook and the route tracer are sing
 
 ## Honest limitations
 
-The route tracer is regex-based static analysis: it misses dynamic route registration, computed paths, and middleware spread across lines, and it says so in its own output. The chosen tradeoff is zero dependencies over an AST parser. Two things keep that from being fatal: the guard hook matches on file paths and never parses code, so enforcement is unaffected by how routes are registered; and the agent treats the map as a starting inventory to verify with Read and Grep, then reports what it could not resolve rather than implying the map is complete. The plan for closing it properly is the first with-more-time item below. The guard's acknowledgment file is a speed bump that records a decision; it is not access control. Two more limits, stated plainly: the guard watches the file-editing tools, so a shell command like `sed -i` through Bash is not intercepted; and Claude itself can create the acknowledgment file, so the ack is an audit trail of a considered decision, not a barrier the model cannot cross. Fleet-grade enforcement belongs in CI, which is the first with-more-time item. The agent reviews; it does not prove runtime behavior. Every blast-radius report ends with what it could not verify statically, on purpose.
+The route tracer is regex-based static analysis: it misses dynamic route registration, computed paths, and middleware spread across lines, and it says so in its own output. The chosen tradeoff is zero dependencies over an AST parser. Two things keep that from being fatal: the guard hook matches on file paths and never parses code, so enforcement is unaffected by how routes are registered; and the agent treats the map as a starting inventory to verify with Read and Grep, then reports what it could not resolve rather than implying the map is complete. The plan for closing it properly is a with-more-time item below. The guard's acknowledgment file is a speed bump that records a decision; it is not access control. Two more limits, stated plainly: the guard watches the file-editing tools, so a shell command like `sed -i` through Bash is not intercepted; and Claude itself can create the acknowledgment file, so the ack is an audit trail of a considered decision, not a barrier the model cannot cross. Fleet-grade enforcement belongs in CI, a with-more-time item. The agent reviews; it does not prove runtime behavior. Every blast-radius report ends with what it could not verify statically, on purpose.
 
 ## What I cut, and why
 
 - **MCP server:** nothing here needs external system access; adding one would be surface area for its own sake.
 - **Multi-framework support (Koa, Fastify, Rails):** one persona, one stack, done properly, beats four done shallowly.
 - **Auto-fix mode:** on billing code, a reviewer that writes its own changes unreviewed is the disease pretending to be the cure.
-- **Broad eval suite:** three eval cases ship as a seed (see `evals/`); a real suite with measured trigger rates is the first with-more-time item.
+- **Broad eval suite:** three eval cases ship as a seed (see `evals/`); a real suite with measured trigger rates is a with-more-time item.
 
 ## With more time
 

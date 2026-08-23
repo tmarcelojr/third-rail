@@ -1,5 +1,6 @@
 {
   "sensitivePaths": [
+    "**/server.js",
     "**/routes/billing.js",
     "**/routes/webhooks.js",
     "**/routes/auth.js",

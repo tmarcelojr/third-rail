@@ -15,7 +15,19 @@ Each defect below is a pattern taken from production Node/Express code, not an i
 | D5 | Login and reset have no rate limiter | 7 |
 | D6 | Timing-unsafe signature comparison | none, deliberately |
 
-D1 through D5 are the demo targets, each with a runbook item behind it. D6 has no runbook item on purpose: it is there to separate a reviewer that matches a checklist from one that reads the code.
+D1 through D4 are the demo's direct targets, each with a runbook item behind it. D5 sits outside the blast radius of a billing-and-webhook change: expect it to surface only as an "Adjacent, not reviewed" line unless you point the reviewer at `routes/auth.js`. D6 has no runbook item on purpose: it is there to separate a reviewer that matches a checklist from one that reads the code.
+
+## What a correct demo run's guard table shows
+
+Three rows, fixed by the agent's two membership rules (guards invoked by radius routes, plus zero-call-site guards defined in `.third-rail.json`-listed files):
+
+| Guard | State |
+|:---|:---|
+| `requireAuth` | wired, untested (call sites `routes/billing.js:7`, `:11`; no test exercises those routes) |
+| `requireAdmin` | wired, untested (call site `routes/billing.js:11`) |
+| `verifySignature` | claimed only (defined `utils/verifySignature.js:5`, zero live call sites) |
+
+`rateLimiter.standard` stays out: it has a live call site, but not on a radius route, and it is not zero-call-site. `rateLimiter.strict` stays out: zero call sites, but `middleware/rateLimiter.js` is not a listed sensitive path, so it surfaces through D5's adjacent line instead of the table.
 
 ---
 
@@ -69,9 +81,9 @@ The route that moves money out is less protected than the route that lists invoi
 **Location:** `routes/webhooks.js:22`
 **Runbook item:** none. This one is here to be caught without a rule for it.
 
-The nine runbook items are one org's scar tissue, which is never the complete set of ways this code can fail. Constant-time comparison of a signature is a real bug class that nobody at this org has been burned by yet, so nothing in the runbook describes it. A reviewer that only matches the checklist will miss D6 entirely. A reviewer that reasons about the code should report it under "Findings the runbook does not cover," which is the section that tells an org what its runbook is missing.
+The nine runbook items are one org's scar tissue, which is never the complete set of ways this code can fail. No item covers timing-safe comparison of webhook signatures: item 7's timing concern is bcrypt short-circuit account enumeration, and item 8's `timingSafeEqual` rule is about capability-URL tokens. A reviewer that only matches the checklist will miss D6 entirely. A reviewer that reasons about the code should report it under "Findings the runbook does not cover," which is the section that tells an org what its runbook is missing.
 
-`signature !== expected` compares strings directly, which returns as soon as it finds a differing character.
+`signature !== expected` compares strings character by character and returns at the first difference. One honesty note: D2 already discards the comparison's result, so this timing channel is unreachable until D2 is fixed. The right report calls it latent, a defense-in-depth fix to make alongside D2, not a live oracle.
 
 The correct comparison is `crypto.timingSafeEqual` on buffers of equal length, which is what `utils/verifySignature.js` already does.
 
@@ -113,3 +125,5 @@ D3 and D5 are absences, so they are confirmed by search returning nothing:
 grep -rn "verifySignature" --include="*.js" routes/ server.js
 grep -rn "strict" --include="*.js" routes/ server.js
 ```
+
+D6 is confirmed by reading: `routes/webhooks.js:22` compares the signature with `!==` on strings.

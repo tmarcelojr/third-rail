@@ -60,7 +60,7 @@ A hook is a shell script that runs on events like PreToolUse, outside the model.
 
 If you would accept the model occasionally forgetting the rule, it is not a hook, it is a line in the skill.
 
-`hooks/hooks.json` registers the script:
+`hooks/hooks.json` registers the script. A minimal example (this repo's live matcher is [hooks/hooks.json](../hooks/hooks.json), the single owner of that list):
 
 ```json
 {
@@ -84,6 +84,8 @@ If you would accept the model occasionally forgetting the rule, it is not a hook
 The script reads JSON from stdin and exits 0 to allow or 2 to block with a message on stderr. Keep it dependency-free and make the block message teach: say which rule matched and what to do next, not just "no." Steal `hooks/scripts/guard.js` from third-rail as a starting point.
 
 **Three things that will cost you an afternoon if you skip them.** They cost me one. Start the script with a shebang (`#!/usr/bin/env node`), run `chmod +x` on it, and confirm git recorded the executable bit with `git ls-files -s hooks/scripts/guard.js` (you want `100755`, not `100644`, or every clone gets a script that cannot run). Do not declare the hooks file in `plugin.json`; `hooks/hooks.json` loads automatically from that path, and declaring it again collides with itself and stops the whole plugin loading. And know that a PreToolUse hook which fails to run **fails open**: the edit proceeds, silently. A broken guard and no guard look identical from the outside, so test the block before you trust it.
+
+**A fourth, learned later: widening the matcher is not widening the guard.** Payload keys differ per tool (`NotebookEdit` sends `notebook_path`, not `file_path`), so a matcher entry whose payload key the script never reads fires on every matching call and silently allows all of them: a guard that looks wider and is not. Before adding a tool to the matcher, pipe that tool's real payload shape into the script by hand and watch it block. This repo's `test/smoke.mjs` does exactly that for every matched tool.
 
 ## Step 5: Wrap it as a plugin (5 minutes)
 
