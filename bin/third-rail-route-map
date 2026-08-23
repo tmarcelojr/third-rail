@@ -11,9 +11,9 @@
  * cost of that choice is stated in the "limitations" field of every output,
  * because a map that hides its own blind spots is worse than no map.
  *
- * Everything emitted is sorted by file then line. Mount order is the subject of
- * two runbook items, so an array whose order does not match the source would be
- * worse than no array at all.
+ * Everything emitted is sorted by source position within its file. Mount order
+ * is the subject of two runbook items, so an array whose order does not match
+ * the source would be worse than no array at all.
  */
 
 'use strict';
@@ -23,8 +23,7 @@ const path = require('path');
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage']);
 const ROUTE_RE = /\b(app|router)\.(get|post|put|patch|delete|all)\s*\(\s*(['"`])([^'"`]*)\3\s*(,)?/g;
-const USE_PREFIX_RE = /\bapp\.use\s*\(\s*(['"`])([^'"`]*)\1\s*,\s*([A-Za-z_$][\w$.]*)/g;
-const USE_BARE_RE = /\bapp\.use\s*\(\s*([A-Za-z_$][\w$.]*(?:\([^)]*\))?)\s*\)/g;
+const USE_RE = /\b(app|router)\.use\s*\(/g;
 const PARSER_RE = /\bexpress\.(json|raw|urlencoded|text)\s*\(/g;
 const REQUIRE_NAME_RE = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\s*\(\s*(['"])(\.[^'"]*)\2\s*\)/g;
 
@@ -56,25 +55,6 @@ function stripComments(src) {
   let out = src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
   out = out.replace(/(^|[^:'"`])\/\/[^\n]*/g, (m, p1) => p1 + ' '.repeat(m.length - p1.length));
   return out;
-}
-
-// A route call sitting inside a string literal is data, not code. Route paths
-// are themselves string literals, so the strings cannot simply be blanked;
-// instead, count unescaped quotes before the match on its own line. An odd
-// count means the match opened inside a string that had not closed yet.
-function isInsideStringLiteral(source, index) {
-  const lineStart = source.lastIndexOf('\n', index - 1) + 1;
-  const before = source.slice(lineStart, index);
-  let quotes = 0;
-  for (let i = 0; i < before.length; i++) {
-    const ch = before[i];
-    if (ch === '\\') {
-      i++;
-      continue;
-    }
-    if (ch === '"' || ch === "'" || ch === '`') quotes++;
-  }
-  return quotes % 2 === 1;
 }
 
 // Split an argument list on top-level commas only, so a call expression
@@ -119,24 +99,30 @@ function splitTopLevelArgs(text) {
 // Middleware is a named reference (requireAuth, rateLimiter.strict) or a call
 // expression that returns one (express.raw({...}), limiter(60)). The terminal
 // handler, written inline as an arrow or function literal, is not middleware.
+// Returns the canonical name, or null for inline functions and req/res/next.
+function classifyArg(arg) {
+  if (/=>/.test(arg) || /^(async\s+)?function\b/.test(arg)) return null;
+  const bare = arg.match(/^([A-Za-z_$][\w$.]*)$/);
+  if (bare) {
+    return ['req', 'res', 'next'].includes(bare[1]) ? null : bare[1];
+  }
+  const call = arg.match(/^([A-Za-z_$][\w$.]*)\s*\(/);
+  if (call) return `${call[1]}(...)`;
+  return null;
+}
+
 function parseMiddlewareList(argsTail) {
   const out = [];
   for (const arg of splitTopLevelArgs(argsTail)) {
-    if (/=>/.test(arg) || /^(async\s+)?function\b/.test(arg)) continue;
-    const bare = arg.match(/^([A-Za-z_$][\w$.]*)$/);
-    if (bare) {
-      if (!['req', 'res', 'next'].includes(bare[1])) out.push(bare[1]);
-      continue;
-    }
-    const call = arg.match(/^([A-Za-z_$][\w$.]*)\s*\(/);
-    if (call) out.push(`${call[1]}(...)`);
+    const name = classifyArg(arg);
+    if (name) out.push(name);
   }
   return out;
 }
 
 function scanFile(file, root) {
   const source = stripComments(fs.readFileSync(file, 'utf8'));
-  const rel = path.relative(root, file) || path.basename(file);
+  const rel = (path.relative(root, file) || path.basename(file)).replace(/\\/g, '/');
   const result = { routes: [], mounts: [], parsers: [], requires: {} };
 
   let match;
@@ -146,45 +132,50 @@ function scanFile(file, root) {
     result.requires[match[1]] = match[3];
   }
 
-  const seenParsers = new Set();
   PARSER_RE.lastIndex = 0;
   while ((match = PARSER_RE.exec(source)) !== null) {
-    if (isInsideStringLiteral(source, match.index)) continue;
-    const line = lineOf(source, match.index);
-    const key = `${line}:${match[1]}`;
-    if (seenParsers.has(key)) continue;
-    seenParsers.add(key);
-    result.parsers.push({ file: rel, line, kind: `express.${match[1]}` });
-  }
-
-  USE_PREFIX_RE.lastIndex = 0;
-  while ((match = USE_PREFIX_RE.exec(source)) !== null) {
-    if (isInsideStringLiteral(source, match.index)) continue;
-    const target = match[3];
-    result.mounts.push({
+    result.parsers.push({
       file: rel,
       line: lineOf(source, match.index),
-      prefix: match[2],
-      target,
-      targetFile: result.requires[target.split('.')[0]] || null
+      kind: `express.${match[1]}`,
+      _idx: match.index,
+      _arg: 0
     });
   }
 
-  USE_BARE_RE.lastIndex = 0;
-  while ((match = USE_BARE_RE.exec(source)) !== null) {
-    if (isInsideStringLiteral(source, match.index)) continue;
-    result.mounts.push({
-      file: rel,
-      line: lineOf(source, match.index),
-      prefix: '(all paths)',
-      target: match[1],
-      targetFile: null
+  // app.use / router.use, in every arity: bare middleware, prefixed mounts,
+  // and mounts carrying several targets. One entry per named target, in
+  // argument order; a mount whose only handler is inline still emits one
+  // entry, because prefix coverage matters for mount order.
+  USE_RE.lastIndex = 0;
+  while ((match = USE_RE.exec(source)) !== null) {
+    const args = splitTopLevelArgs(source.slice(USE_RE.lastIndex));
+    if (args.length === 0) continue;
+    let prefix = '(all paths)';
+    let rest = args;
+    const quoted = args[0].match(/^(['"`])([^'"`]*)\1$/);
+    if (quoted) {
+      prefix = quoted[2];
+      rest = args.slice(1);
+    }
+    const targets = rest.map(classifyArg).filter(Boolean);
+    if (targets.length === 0) targets.push('(inline handler)');
+    targets.forEach((target, argPosition) => {
+      result.mounts.push({
+        file: rel,
+        line: lineOf(source, match.index),
+        owner: match[1],
+        prefix,
+        target,
+        targetFile: result.requires[target.split('.')[0]] || null,
+        _idx: match.index,
+        _arg: argPosition
+      });
     });
   }
 
   ROUTE_RE.lastIndex = 0;
   while ((match = ROUTE_RE.exec(source)) !== null) {
-    if (isInsideStringLiteral(source, match.index)) continue;
     const argsTail = source.slice(ROUTE_RE.lastIndex);
     result.routes.push({
       file: rel,
@@ -192,15 +183,27 @@ function scanFile(file, root) {
       owner: match[1],
       method: match[2].toUpperCase(),
       path: match[4],
-      middlewares: parseMiddlewareList(argsTail)
+      middlewares: parseMiddlewareList(argsTail),
+      _idx: match.index,
+      _arg: 0
     });
   }
 
   return result;
 }
 
-function byFileThenLine(a, b) {
-  return a.file === b.file ? a.line - b.line : a.file.localeCompare(b.file);
+// Source order, exactly: file (code-unit compare, locale-independent), then
+// character position of the match, then argument position for the entries a
+// single multi-target call fans out into.
+function bySourcePosition(a, b) {
+  if (a.file !== b.file) return a.file < b.file ? -1 : 1;
+  if (a._idx !== b._idx) return a._idx - b._idx;
+  return a._arg - b._arg;
+}
+
+function stripInternal(entry) {
+  const { _idx, _arg, ...clean } = entry;
+  return clean;
 }
 
 function main() {
@@ -226,20 +229,22 @@ function main() {
     }
   }
 
-  routes.sort(byFileThenLine);
-  mounts.sort(byFileThenLine);
-  parsers.sort(byFileThenLine);
+  routes.sort(bySourcePosition);
+  mounts.sort(bySourcePosition);
+  parsers.sort(bySourcePosition);
 
   const output = {
     root,
     scannedFiles: files.length,
-    ordering: 'parsers, mounts, and routes are each sorted by file then line, so their order matches the source',
-    parsers,
-    mounts,
-    routes,
+    ordering: 'parsers, mounts, and routes are each in source order within their file; cross-file order is path order, not execution order (see limitations)',
+    parsers: parsers.map(stripInternal),
+    mounts: mounts.map(stripInternal),
+    routes: routes.map(stripInternal),
     limitations: [
       'Regex-based static scan: misses dynamic route registration, computed path strings, and middleware passed as a spread array.',
+      'Route-shaped text inside string literals (docs, fixtures, multi-line templates) will appear in the map; comments are stripped, strings are not. A visible false positive beats a silently dropped route.',
       'Middleware chains are read from the route declaration onward; a chain assembled across multiple statements before the route is registered will be incomplete.',
+      'A regex literal containing a quote character can desync argument splitting for that one call, truncating its reported chain.',
       'Mount-to-file resolution follows simple const-require patterns only.',
       'Ordering within a file is reliable. Ordering ACROSS files is alphabetical by path, not execution order, so a parser mounted in one file and a router in another cannot be sequenced from this output alone.',
       'Treat this map as a starting inventory to verify with Read and Grep, not as proof of absence.'
