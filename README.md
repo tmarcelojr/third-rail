@@ -114,7 +114,7 @@ Measured, not estimated: idle and on-invoke sizes from `claude plugin details th
 | Idle (always loaded) | ~260 tokens: the skill and agent descriptions |
 | Guard hook | 0 tokens idle; runs out of process. ~120 tokens of message only when it blocks |
 | Skill triggered | ~2,000 tokens, loaded only when sensitive work starts |
-| Agent invoked | The agent definition is ~3,100 tokens, but that is its size, not its cost. Live runs consumed 57,000-60,000 tokens inside the agent's own context reading files and running greps; your conversation pays only for the returned report, which measured ~1,900 tokens on a run with seven findings |
+| Agent invoked | The agent definition is ~3,100 tokens, but that is its size, not its cost. A live run burns tens of thousands of tokens inside the agent's own context reading files and running greps (the exact figure depends on how cache reads and writes are counted, so no false precision here); your conversation pays only for the returned report, which measured ~1,900 tokens on a run with seven findings |
 
 ## Supply chain
 
