@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /*
- * third-rail guard: PreToolUse hook on Edit|Write|MultiEdit.
+ * third-rail guard: PreToolUse hook on the file-editing tools. The live list
+ * of matched tools is owned by hooks/hooks.json; this script judges whatever
+ * path it is handed.
  *
  * Deterministic fence around the codebase's third rail. If the edit target
  * matches a sensitive path (project .third-rail.json, else a conservative
@@ -13,7 +15,9 @@
  *
  * Robustness stance: this script runs on every edit, so its own bugs must
  * never brick the editor loop. Malformed stdin, junk config entries, and
- * pathological glob patterns all fail OPEN with a stderr note, never closed.
+ * pathological glob patterns all fail OPEN, never closed. A config that
+ * exists but cannot be used is surfaced to the user (see main), never
+ * silently swapped for the defaults.
  */
 
 'use strict';
@@ -128,12 +132,17 @@ function findUp(startDir, fileName, maxLevels = 10) {
 }
 
 // Returns { patterns, configPath, configProblem }. A config that exists but
-// cannot be used is reported as such rather than being silently swapped for
-// the defaults: for a team whose org config IS the control surface, a typo
-// that quietly reinstates a stranger's policy is worse than a loud failure.
-function loadConfig(fileDir, cwd) {
-  const configPath =
-    findUp(fileDir, CONFIG_FILE) || (cwd ? findUp(cwd, CONFIG_FILE, 3) : null);
+// cannot be used is reported back to main as configProblem; main surfaces it
+// to the user whether or not anything blocks, because for a team whose org
+// config IS the control surface, a typo that quietly reinstates a stranger's
+// policy is worse than a loud failure.
+function loadConfig(fileDirs, cwd) {
+  let configPath = null;
+  for (const dir of fileDirs) {
+    configPath = findUp(dir, CONFIG_FILE);
+    if (configPath) break;
+  }
+  if (!configPath && cwd) configPath = findUp(cwd, CONFIG_FILE, 3);
   if (!configPath) return { patterns: null, configPath: null, configProblem: null };
 
   let config;
@@ -183,10 +192,10 @@ function truncate(value, max = 60) {
   return s.length > max ? `${s.slice(0, max)}...` : s;
 }
 
-function block(normalized, reason) {
+function block(shownPath, reason) {
   process.stderr.write(
     [
-      `THIRD RAIL: ${normalized} is a guarded path (${reason}).`,
+      `THIRD RAIL: ${shownPath} is a guarded path (${reason}).`,
       'Before editing:',
       '  1. Consult the runbook skill: third-rail:hardening-runbook',
       '  2. Run the blast-radius agent on the change you intend to make',
@@ -211,44 +220,76 @@ function main() {
   const rawPath = toolInput.file_path || toolInput.filePath || '';
   if (!rawPath || typeof rawPath !== 'string') process.exit(0);
 
-  // Resolve before matching, so routes/sub/../billing.js and a symlink pointing
-  // at a guarded file are both seen for what they are.
-  let normalized = path.normalize(rawPath).replace(/\\/g, '/');
-  try {
-    normalized = fs.realpathSync(normalized).replace(/\\/g, '/');
-  } catch {
-    // Target does not exist yet (a Write creating a new file). The normalized
-    // path is still the right thing to match against.
-  }
-
-  const fileDir = path.dirname(normalized);
+  // The session's cwd, read BEFORE any resolution: a relative path must
+  // resolve against the repo the engineer is working in, not against
+  // wherever the hook process happens to be running.
   const cwd = typeof input.cwd === 'string' ? input.cwd : process.cwd();
 
-  const { patterns, configPath, configProblem } = loadConfig(fileDir, cwd);
+  // Matching runs against BOTH the resolved path and its realpath. The
+  // resolved path catches routes/sub/../billing.js and a guarded path that is
+  // itself a symlink (realpath alone would rewrite it out of the config's
+  // globs); the realpath catches an innocent-looking symlink pointing AT a
+  // guarded file. Sensitivity is keyed to path patterns, so a name that
+  // matches the org's glob is sensitive by definition, wherever the inode is.
+  const resolved = (path.isAbsolute(rawPath)
+    ? path.normalize(rawPath)
+    : path.resolve(cwd, rawPath)
+  ).replace(/\\/g, '/');
+  let real = resolved;
+  try {
+    real = fs.realpathSync(resolved).replace(/\\/g, '/');
+  } catch {
+    // Target does not exist yet (a Write creating a new file). The resolved
+    // path is still the right thing to match against.
+  }
+  const candidates = real === resolved ? [resolved] : [resolved, real];
+
+  const configDirs = [...new Set(candidates.map((c) => path.dirname(c)))];
+  const { patterns, configPath, configProblem } = loadConfig(configDirs, cwd);
 
   let reason = null;
   if (patterns) {
-    const matched = patterns.find((pattern) => matchesGlob(pattern, normalized));
-    if (matched) {
-      reason = `matched "${truncate(matched)}" from ${configPath}. This code class has burned this org before`;
+    for (const candidate of candidates) {
+      const matched = patterns.find((pattern) => matchesGlob(pattern, candidate));
+      if (matched) {
+        reason = `matched "${truncate(matched)}" from ${configPath}. This code class has burned this org before`;
+        break;
+      }
     }
   } else {
-    const word = matchesDefaultTokens(normalized);
-    if (word) {
-      reason = configProblem
-        ? `filename contains the sensitive word "${word}" from third-rail's default list. Note: ${configPath} ${configProblem}, so your repo's own rules are NOT in effect; fix that file to restore them`
-        : `filename contains the sensitive word "${word}" from third-rail's default list; no ${CONFIG_FILE} found, add one to tune this to your repo`;
+    for (const candidate of candidates) {
+      const word = matchesDefaultTokens(candidate);
+      if (word) {
+        reason = configProblem
+          ? `filename contains the sensitive word "${word}" from third-rail's default list. Note: ${configPath} ${configProblem}, so your repo's own rules are NOT in effect; fix that file to restore them`
+          : `filename contains the sensitive word "${word}" from third-rail's default list; no ${CONFIG_FILE} found, add one to tune this to your repo`;
+        break;
+      }
     }
   }
 
-  if (!reason) process.exit(0);
+  if (!reason) {
+    if (configProblem) {
+      // Nothing blocked, but the org's config is broken and its rules are not
+      // in effect. Exit-0 stderr is invisible in the hook harness, so the
+      // warning rides the documented systemMessage channel, which the harness
+      // shows to the user without blocking the edit.
+      process.stdout.write(
+        JSON.stringify({
+          systemMessage: `third-rail: ${configPath} ${configProblem}. Your repo's sensitive-path rules are NOT in effect (only third-rail's default word list is active). Fix that file to restore them.`
+        }) + '\n'
+      );
+    }
+    process.exit(0);
+  }
 
   if (isAcknowledged(configPath, cwd)) {
     process.stderr.write(`third-rail: sensitive path edited under acknowledgment.\n`);
     process.exit(0);
   }
 
-  block(normalized, reason);
+  const shownPath = real === resolved ? resolved : `${resolved} (resolves to ${real})`;
+  block(shownPath, reason);
 }
 
 try {
