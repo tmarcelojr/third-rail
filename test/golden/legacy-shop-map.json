@@ -1,0 +1,128 @@
+{
+  "root": "<fixture>",
+  "scannedFiles": 8,
+  "ordering": "parsers, mounts, and routes are each in source order within their file; cross-file order is path order, not execution order (see limitations)",
+  "parsers": [
+    {
+      "file": "server.js",
+      "line": 12,
+      "kind": "express.json"
+    }
+  ],
+  "mounts": [
+    {
+      "file": "server.js",
+      "line": 12,
+      "owner": "app",
+      "prefix": "(all paths)",
+      "target": "express.json(...)",
+      "targetFile": null
+    },
+    {
+      "file": "server.js",
+      "line": 19,
+      "owner": "app",
+      "prefix": "/api/auth",
+      "target": "authRoutes",
+      "targetFile": "./routes/auth"
+    },
+    {
+      "file": "server.js",
+      "line": 20,
+      "owner": "app",
+      "prefix": "/api/billing",
+      "target": "billingRoutes",
+      "targetFile": "./routes/billing"
+    },
+    {
+      "file": "server.js",
+      "line": 21,
+      "owner": "app",
+      "prefix": "/api/webhooks",
+      "target": "webhookRoutes",
+      "targetFile": "./routes/webhooks"
+    }
+  ],
+  "routes": [
+    {
+      "file": "routes/auth.js",
+      "line": 7,
+      "owner": "router",
+      "method": "POST",
+      "path": "/login",
+      "middlewares": []
+    },
+    {
+      "file": "routes/auth.js",
+      "line": 15,
+      "owner": "router",
+      "method": "POST",
+      "path": "/reset",
+      "middlewares": []
+    },
+    {
+      "file": "routes/billing.js",
+      "line": 7,
+      "owner": "router",
+      "method": "GET",
+      "path": "/invoices",
+      "middlewares": [
+        "requireAuth"
+      ]
+    },
+    {
+      "file": "routes/billing.js",
+      "line": 11,
+      "owner": "router",
+      "method": "POST",
+      "path": "/charge",
+      "middlewares": [
+        "requireAuth",
+        "requireAdmin"
+      ]
+    },
+    {
+      "file": "routes/billing.js",
+      "line": 16,
+      "owner": "router",
+      "method": "POST",
+      "path": "/refund",
+      "middlewares": []
+    },
+    {
+      "file": "routes/webhooks.js",
+      "line": 10,
+      "owner": "router",
+      "method": "POST",
+      "path": "/payments",
+      "middlewares": []
+    },
+    {
+      "file": "server.js",
+      "line": 15,
+      "owner": "app",
+      "method": "GET",
+      "path": "/api/search",
+      "middlewares": [
+        "rateLimiter.standard"
+      ]
+    },
+    {
+      "file": "server.js",
+      "line": 23,
+      "owner": "app",
+      "method": "GET",
+      "path": "/health",
+      "middlewares": []
+    }
+  ],
+  "limitations": [
+    "Regex-based static scan: misses dynamic route registration, computed path strings, and middleware passed as a spread array.",
+    "Route-shaped text inside string literals (docs, fixtures, multi-line templates) will appear in the map; comments are stripped, strings are not. A visible false positive beats a silently dropped route.",
+    "Middleware chains are read from the route declaration onward; a chain assembled across multiple statements before the route is registered will be incomplete.",
+    "A regex literal containing a quote character can desync argument splitting for that one call, truncating its reported chain.",
+    "Mount-to-file resolution follows simple const-require patterns only.",
+    "Ordering within a file is reliable. Ordering ACROSS files is alphabetical by path, not execution order, so a parser mounted in one file and a router in another cannot be sequenced from this output alone.",
+    "Treat this map as a starting inventory to verify with Read and Grep, not as proof of absence."
+  ]
+}
