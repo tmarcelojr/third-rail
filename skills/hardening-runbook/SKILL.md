@@ -69,13 +69,7 @@ This is an org runbook, not general advice. Every item below comes from a bug th
 
 ## Reporting a blast-radius review
 
-When the `blast-radius` agent returns, show the reader its findings, do not summarize them away. Reproduce verbatim, at minimum:
-
-- the `## Findings the runbook covers` list, each with its severity and runbook item number
-- the `## Findings the runbook does not cover` list
-- the `## Scoreboard` block exactly as written
-
-These are the output the reviewer is meant to act on, and the two lists are the only place the reader can see what the runbook caught versus what it did not. A paraphrase loses the item numbers, flattens the severities, and hides which findings were outside the runbook entirely. Add your own commentary after the report, not in place of it.
+The `blast-radius` agent's report ends with a caller line; honor it. Reproduce the two findings sections and the scoreboard verbatim before adding commentary of your own. A paraphrase loses the item numbers, flattens the severities, and hides which findings fell outside the runbook, which is the only part that tells an org what its runbook is missing.
 
 ## What this runbook cannot see
 
