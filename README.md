@@ -1,146 +1,213 @@
-# third-rail
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.svg">
+  <img alt="third-rail: safe changes to the code everyone is afraid to touch. A deterministic hook, an org runbook, and a blast-radius agent." src="assets/hero-light.svg">
+</picture>
 
-Safe changes to the code everyone is afraid to touch.
+<p>
+  <a href="https://github.com/tmarcelojr/third-rail/blob/main/.claude-plugin/plugin.json"><img alt="Plugin version, read live from plugin.json" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftmarcelojr%2Fthird-rail%2Fmain%2F.claude-plugin%2Fplugin.json&query=%24.version&label=version&color=1f6feb"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/tmarcelojr/third-rail?color=1f6feb"></a>
+  <img alt="Requires Node 18 or newer" src="https://img.shields.io/badge/node-%E2%89%A518-3fb950">
+  <img alt="Zero runtime dependencies" src="https://img.shields.io/badge/runtime%20deps-0-3fb950">
+</p>
 
-**Who this is for:** the backend engineer maintaining a legacy Node/Express monolith, where the billing routes, webhook handlers, and auth middleware are the third rail: the people who wrote them are gone, test coverage there is thin, and every change near money is a risk conversation. AI coding tools sharpen the problem in one specific way: they produce plausible changes fast, and plausible is the failure mode where wrong is expensive.
+A [Claude Code plugin](https://code.claude.com/docs/en/plugins) for the backend engineer maintaining a legacy Node/Express monolith — the codebase where billing routes, webhook handlers, and auth middleware are the third rail: the people who wrote them are gone, test coverage is thin, and every change near money is a risk conversation.
 
-**What it does:** turns your org's hardening knowledge into three things that fire at the right moments.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/demo-dark.gif">
+  <img alt="Animated terminal session: a request to add an email notification to the refund endpoint is stopped by the third-rail guard before the edit happens, with a block message naming the matched rule and the three steps to proceed: consult the runbook skill, run the blast-radius agent, then create an acknowledgment file." src="assets/demo-light.gif" width="720">
+</picture>
 
-| Component | What | When it acts |
-|---|---|---|
-| Hook (`hooks/`) | Deterministic guard on the file-editing tools (live matcher: [hooks/hooks.json](hooks/hooks.json)). Blocks casual edits to sensitive paths and points at the runbook. | Every edit, before it happens |
-| Skill (`skills/hardening-runbook`) | The org runbook: nine production-bought rules for payment, webhook, and auth code, gotchas first. | When work touches sensitive code, or the hook fires |
-| Agent (`agents/blast-radius.md`) | Safe-change reviewer. Maps affected routes and middleware chains with a bundled deterministic tracer, checks the change against the runbook, and reports every guard as verified (call site plus a test that exercises it), wired but untested, or claimed only. | On demand, before or after a risky change |
-
-One sentence of design: the hook enforces (rules that are not executable get skipped), the skill knows (org knowledge generic review cannot have), the agent judges (a script computes the route map; the model interprets it).
+AI coding tools sharpen this problem in one specific way: they produce plausible changes fast, and plausible is the failure mode where wrong is expensive. third-rail turns your org's hardening knowledge into three components that fire at the right moments — a **deterministic guard hook** that blocks casual edits to sensitive paths before they happen, an **org runbook skill** with nine production-bought rules for payment, webhook, and auth code, and a **blast-radius agent** that maps what a change touches and reports every guard as verified, wired-but-untested, or claimed-only. The hook enforces, the skill knows, the agent judges.
 
 ## Install
 
-From GitHub:
+Prerequisites: [Claude Code](https://code.claude.com/docs) (tested with 2.1.241) and Node 18 or newer — the hook and tracer are dependency-free Node scripts. Then, inside Claude Code:
 
-```
+```text
 /plugin marketplace add tmarcelojr/third-rail
 /plugin install third-rail@third-rail
 ```
 
-From a fresh clone:
+> [!IMPORTANT]
+> If the install summary asks you to run `/reload-plugins`, do so — that arms the guard hook without restarting. Confirm with `/hooks` (lists the third-rail PreToolUse guard) and `/plugin list` (shows third-rail enabled).
 
-```
+<details>
+<summary>Install from a clone instead</summary>
+
+```bash
 git clone https://github.com/tmarcelojr/third-rail.git
 cd third-rail
 ```
 
-then inside Claude Code, add the clone as a local marketplace by path (use `./`, or the absolute path to the clone; a bare `.` is not accepted):
+Then inside Claude Code, add the clone as a local marketplace by path (use `./` or the absolute path; a bare `.` is not accepted):
 
-```
+```text
 /plugin marketplace add ./
 /plugin install third-rail@third-rail
 ```
 
-The GitHub form above is the simplest path and needs no clone. Verify either way with `/plugin list` (third-rail shows enabled). Validation: `claude plugin validate .` passes clean from the repo root.
+`claude plugin validate .` passes clean from the repo root.
 
-**Activate after installing.** If the install summary asks you to run `/reload-plugins`, do so; that arms the guard hook without restarting. Confirm either way with `/hooks`, which should list the third-rail PreToolUse guard, and `/plugin list`, which should show third-rail enabled.
+</details>
 
-## Try it in 5 minutes
+## Try it in five minutes
 
-The repo bundles `examples/legacy-shop`: a tiny Express monolith that boots, passes its own tests, and is seeded with real production bug patterns. The defect inventory lives in [docs/FIXTURE_DEFECTS.md](docs/FIXTURE_DEFECTS.md), outside the fixture so it is not sitting in the directory under review, and it lists every seeded defect, nearly all with commands to confirm them without running the plugin.
-
-To be clear about what the fixture is: a demonstration, not a blind test. The defects were chosen to exercise the runbook, so the runbook necessarily describes the same classes of bug, and both files live in this repo where a determined reviewer could find either. It shows the plugin working on realistic code with known answers. It does not measure how the reviewer performs on code it has no prior knowledge of; that is what an eval suite is for, and building a real one is a with-more-time item.
+The repo bundles [`examples/legacy-shop`](examples/legacy-shop): a tiny Express monolith that boots, passes its own tests, and is seeded with six real production bug patterns. First, prove the bugs are live without the plugin:
 
 ```bash
 cd examples/legacy-shop
 npm install
-claude
+npm start
 ```
-
-1. Ask for an innocent-sounding change:
-
-   > Add a customer email notification to the refund endpoint in routes/billing.js
-
-   The guard hook blocks the edit: billing.js is a marked sensitive path. The block message tells Claude (and you) what to do instead of just saying no.
-
-2. Run the reviewer:
-
-   > Use the blast-radius agent to review the billing and webhook paths of this app
-
-   Expect it to find, with file:line: the global `express.json()` destroying the webhook's raw body, the signature check that logs a mismatch and processes the event anyway behind an always-200, a correct constant-time verifier with passing tests and zero call sites, and the refund route missing the auth its sibling routes carry.
-
-   Expect it to also name `routes/auth.js` under "Adjacent, not reviewed" without digging into it. Login has no rate limiter while `/api/search` does, but auth is outside the blast radius of a billing and webhook change, so the reviewer flags that the file exists and leaves it for the review that fires when someone edits it. Point the reviewer at `routes/auth.js` if you want that one investigated.
-
-3. Acknowledge and fix:
-
-   ```bash
-   touch .third-rail-ack
-   ```
-
-   Then let Claude apply the fix with the runbook loaded. The ack file is a recorded decision that the runbook was consulted, not a bypass.
-
-Prove the seeded bugs are real without the plugin (30 seconds):
 
 ```bash
-npm start &
-curl -s -X POST localhost:3459/api/webhooks/payments -H 'Content-Type: application/json' -d '{"type":"payment.succeeded","id":"evt_forged"}'
-curl -s -X POST localhost:3459/api/billing/refund -H 'Content-Type: application/json' -d '{"orderId":"ord_1","amount":9999}'
+curl -s -X POST localhost:3459/api/webhooks/payments \
+  -H 'Content-Type: application/json' \
+  -d '{"type":"payment.succeeded","id":"evt_forged"}'
 ```
 
-A forged, unsigned webhook returns `{"received":true}` and a no-auth refund succeeds. That is the monolith this plugin exists for.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/live-bugs-dark.png">
+  <img alt="Terminal output: a forged, unsigned webhook event returns received true; a refund request with no credentials returns refunded true for 9999; the sibling charge route correctly returns an auth required error; the server log prints webhook signature mismatch, processing anyway." src="assets/live-bugs-light.png" width="760">
+</picture>
 
-## Verify the wiring
+A forged, unsigned webhook is accepted. A refund with no credentials moves money. That is the monolith this plugin exists for. Now start `claude` in the fixture directory and:
+
+1. **Ask for an innocent-sounding change** — *"Add a customer email notification to the refund endpoint in routes/billing.js"*. The guard blocks the edit before it happens: `billing.js` is a marked sensitive path, and the block message teaches the way forward instead of only refusing.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/guard-block-dark.png">
+  <img alt="Terminal output of the guard hook blocking an edit to routes/billing.js: THIRD RAIL, this is a guarded path matched from .third-rail.json. Before editing: consult the runbook skill, run the blast-radius agent, then create an acknowledgment file. The ack is a record that the runbook was consulted, not a bypass. Hook exit code 2, the edit never happened." src="assets/guard-block-light.png" width="760">
+</picture>
+
+2. **Run the reviewer** — *"Use the blast-radius agent to review the billing and webhook paths of this app"*. Expect it to find, with `file:line`: the global `express.json()` destroying the webhook's raw body, the signature check that logs a mismatch and processes the event anyway behind an always-200, a correct constant-time verifier with passing tests and zero call sites, and the refund route missing the auth its siblings carry. Expect it to name `routes/auth.js` under "Adjacent, not reviewed" without wandering into it. A full report from a live run: [docs/BLAST_RADIUS_DEMO.md](docs/BLAST_RADIUS_DEMO.md) ([PDF](docs/BLAST_RADIUS_DEMO.pdf)).
+
+3. **Acknowledge and fix** — `touch .third-rail-ack`, then let Claude apply the fix with the runbook loaded. The ack file is a recorded decision that the runbook was consulted, not a bypass.
+
+> [!NOTE]
+> The fixture is a demonstration with known answers, not a blind test. The defects were chosen to exercise the runbook, and the full answer key lives outside the fixture in [docs/FIXTURE_DEFECTS.md](docs/FIXTURE_DEFECTS.md) — nearly every defect with commands that confirm it without the plugin. One seeded bug deliberately maps to no runbook item, to separate a reviewer that matches a checklist from one that reads the code.
+
+## How it works
+
+```mermaid
+flowchart LR
+    E["Claude edits<br/>routes/billing.js"] -->|PreToolUse| G{"guard.js<br/>matches<br/>.third-rail.json?"}
+    G -->|no| OK["edit proceeds"]
+    G -->|"yes, ack present"| OK
+    G -->|"yes, no ack"| B["exit 2 — blocked<br/>message teaches 3 steps"]
+    B --> S["hardening-runbook skill<br/>9 production-bought rules"]
+    B --> R["blast-radius agent"]
+    R --> T["third-rail-route-map<br/>deterministic route +<br/>middleware map"]
+    T --> R
+    R --> REP["report<br/>verified / wired-untested /<br/>claimed-only"]
+```
+
+Two decisions carry the design.
+
+**Scripts compute; the model judges.** The guard and the route tracer are single-file Node stdlib scripts — no dependencies, readable start to finish ([guard.js](hooks/scripts/guard.js), [third-rail-route-map](bin/third-rail-route-map)). The tracer emits a JSON map of parsers, mounts, and routes in source order; the agent interprets that map instead of re-deriving the route table by prompt, because scripts do not hallucinate inventory. The tradeoff accepted: regex over AST. The tracer misses dynamic registration and computed paths, and it says so in a `limitations` field printed with every output. Enforcement is unaffected — the guard matches file paths and never parses code.
+
+**"Done" means wired, and wiring is verified by executing, not reading.** The runbook's rule 2: a control counts as done only with a call site on the live path and a test that exercises it. The blast-radius report holds every guard to that bar — `verified`, `wired, untested`, or `claimed only` — because the most expensive bug class in legacy code is the fix that exists and does not run. The plugin applies the same rule to itself: it failed its own defined-but-not-wired test three review rounds in a row (a hook that validated but never fired, a config line that killed the install, a fix that collided with auto-loading — the full postmortems are in [docs/DECISIONS.md](docs/DECISIONS.md), D9–D11), so [test/smoke.mjs](test/smoke.mjs) now executes every boundary a script can reach: real hook payloads, both symlink directions, a deliberately broken config, a pathological glob, a golden route map, and wiring checks for every declared component.
 
 ```bash
 node test/smoke.mjs
 ```
 
-Feeds the guard real hook payloads (both symlink directions, relative paths, a deliberately broken config), diffs the route tracer's output on the fixture against a committed golden map, and checks that every declared component is actually wired: manifest paths resolve, the agent's tool list includes what its procedure uses, every file:line in the defect inventory exists. The decision log records this plugin failing its own defined-but-not-wired test repeatedly ([docs/DECISIONS.md](docs/DECISIONS.md), D9-D11); this test is that lesson made mechanical.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/smoke-dark.png">
+  <img alt="Terminal output of node test/smoke.mjs: twenty-four ok lines covering guard blocking, symlink handling, broken-config behavior, acknowledgment handling, tracer golden-map comparison and edge cases, and wiring checks, ending with all 24 checks passed." src="assets/smoke-light.png" width="760">
+</picture>
 
-## What this is not
+The guard itself is built to be boring: it fails open on malformed input, junk config, and its own crashes — a guard bug must never brick the editor loop — and a config that exists but cannot be parsed is surfaced loudly rather than silently swapped for defaults. Blocks teach: the message names the matched rule and the exact three steps to proceed.
 
-Anthropic ships general-purpose `code-review` and `claude-security` plugins. third-rail is deliberately not that: it is the layer generic review cannot be, your org's runbook and your org's sensitive paths, enforced deterministically at edit time and reviewed with judgment on demand. The runbook that ships here is one real org's starting point; the intent is that you edit `skills/hardening-runbook/SKILL.md` and `.third-rail.json` until they are yours. A hook rather than an MCP server because the persona's pain is enforcement at the moment of change, not access to an external system.
+## Reference
 
-## What it costs you in time
+<details>
+<summary><strong><code>.third-rail.json</code> — marking your sensitive paths</strong></summary>
 
-A first review on a guarded path takes three to five minutes end to end, most of it the reviewer agent mapping routes and checking the change against the runbook.
+Place at the repo root (the guard also finds it from parent directories):
 
-Read that number against how the guard actually fires. It only triggers on paths listed in `.third-rail.json`, which on most codebases is a handful of files, so the majority of your editing never touches it. And the acknowledgment file persists: the first edit to billing today costs a few minutes, the next twenty cost nothing. The wait is a pre-flight check when you start work on dangerous code, not a tax on every save.
+```json
+{
+  "sensitivePaths": [
+    "**/routes/billing.js",
+    "**/routes/webhooks.js",
+    "**/middleware/auth.js"
+  ]
+}
+```
 
-If your team cannot accept any wait at edit time, the same review belongs in CI, where it costs nobody anything because it runs after you have moved on. That is a with-more-time item below.
+| Behavior | Detail |
+|---|---|
+| Globs | `**` crosses directories, `*` stays within a segment; case-insensitive; matched against both the resolved path and its realpath, so symlinks in either direction cannot dodge the guard |
+| No config | A conservative default list applies: whole-word tokens (`auth`, `billing`, `payment`, `webhook`, `stripe`, `checkout`, `refund`, `entitlement`, `session`, …) on code files only, so `authors-list.js` in an unrelated repo does not block |
+| Empty `sensitivePaths` | An explicit decision — the guard stays out of the way |
+| Broken config | Fails open, but the guard tells you your rules are not in effect (block message or a `systemMessage` warning) rather than silently reverting to defaults |
+| Acknowledgment | `touch .third-rail-ack` next to the config (or the working directory), or `THIRD_RAIL_ACK=1` for the session. Scoped on purpose: a stray ack far up the tree cannot silently disable the guard |
+| Pathological globs | Patterns with more than 10 wildcards fall back to substring matching so they cannot hang the hook |
 
-## Context cost
+</details>
 
-Measured, not estimated: idle and on-invoke sizes from `claude plugin details third-rail`, run costs from live sessions.
+<details>
+<summary><strong>Hook contract</strong></summary>
+
+The live matcher is owned by [hooks/hooks.json](hooks/hooks.json): `PreToolUse` on `Edit|Write|MultiEdit`, 10-second timeout, direct-executable command. The guard reads the tool payload from stdin, exits `0` to allow and `2` to block with the teaching message on stderr. Everything else about its behavior — path resolution against the payload `cwd`, symlink handling, fail-open rules — is exercised by `test/smoke.mjs`, which is the contract's executable form.
+
+</details>
+
+<details>
+<summary><strong>Context cost — measured, not estimated</strong></summary>
+
+Idle and on-invoke sizes from `claude plugin details third-rail`; run costs from live sessions.
 
 | State | Cost |
 |---|---|
 | Idle (always loaded) | ~260 tokens: the skill and agent descriptions |
 | Guard hook | 0 tokens idle; runs out of process. ~120 tokens of message only when it blocks |
 | Skill triggered | ~2,000 tokens, loaded only when sensitive work starts |
-| Agent invoked | The agent definition is ~3,100 tokens, but that is its size, not its cost. A live run burns tens of thousands of tokens inside the agent's own context reading files and running greps (the exact figure depends on how cache reads and writes are counted, so no false precision here); your conversation pays only for the returned report, which measured ~1,900 tokens on a run with seven findings |
+| Agent invoked | The ~3,100-token definition is its size, not its cost. A live run burns tens of thousands of tokens inside the agent's own context; your conversation pays only for the returned report — measured ~1,900 tokens on a run with seven findings |
 
-## Supply chain
+A first review on a guarded path takes three to five minutes end to end. The guard only fires on listed paths — a handful of files on most codebases — and the ack persists, so the first edit to billing today costs minutes and the next twenty cost nothing. If your team cannot accept any wait at edit time, the same review belongs in CI (roadmap, below).
 
-The plugin has zero runtime dependencies: the hook and the route tracer are single-file Node stdlib scripts you can read start to finish in a few minutes ([hooks/scripts/guard.js](hooks/scripts/guard.js), [bin/third-rail-route-map](bin/third-rail-route-map)). No network installs, no postinstall scripts. The demo fixture depends on `express` only, installed by you, inside the fixture. The hook fails open on malformed input so a guard bug cannot brick your editor loop.
+</details>
 
-## Honest limitations
+<details>
+<summary><strong>Supply chain</strong></summary>
 
-The route tracer is regex-based static analysis: it misses dynamic route registration, computed paths, and middleware spread across lines, and it says so in its own output. The chosen tradeoff is zero dependencies over an AST parser. Two things keep that from being fatal: the guard hook matches on file paths and never parses code, so enforcement is unaffected by how routes are registered; and the agent treats the map as a starting inventory to verify with Read and Grep, then reports what it could not resolve rather than implying the map is complete. The plan for closing it properly is a with-more-time item below. The guard's acknowledgment file is a speed bump that records a decision; it is not access control. Two more limits, stated plainly: the guard watches the file-editing tools, so a shell command like `sed -i` through Bash is not intercepted; and Claude itself can create the acknowledgment file, so the ack is an audit trail of a considered decision, not a barrier the model cannot cross. Fleet-grade enforcement belongs in CI, a with-more-time item. The agent reviews; it does not prove runtime behavior. Every blast-radius report ends with what it could not verify statically, on purpose.
+Zero runtime dependencies: the hook and tracer are single-file Node stdlib scripts. No network installs, no postinstall scripts. The demo fixture depends on `express` only, installed by you, inside the fixture. The asset generator ([scripts/generate-readme-assets.mjs](scripts/generate-readme-assets.mjs)) uses Playwright and ffmpeg, dev-only and never shipped.
 
-## What I cut, and why
+</details>
 
-- **MCP server:** nothing here needs external system access; adding one would be surface area for its own sake.
-- **Multi-framework support (Koa, Fastify, Rails):** one persona, one stack, done properly, beats four done shallowly.
-- **Auto-fix mode:** on billing code, a reviewer that writes its own changes unreviewed is the disease pretending to be the cure.
-- **Broad eval suite:** three eval cases ship as a seed (see `evals/`); a real suite with measured trigger rates is a with-more-time item.
+## Scope and limitations
 
-## With more time
+Anthropic ships general-purpose `code-review` and `claude-security` plugins. third-rail is deliberately not that: it is the layer generic review cannot be — your org's runbook and your org's sensitive paths, enforced deterministically at edit time. The runbook that ships is one real org's starting point; edit [`skills/hardening-runbook/SKILL.md`](skills/hardening-runbook/SKILL.md) and `.third-rail.json` until they are yours. (For a different workflow entirely, the one-page guide to building a plugin like this is [docs/BUILD_YOUR_OWN_PLUGIN.md](docs/BUILD_YOUR_OWN_PLUGIN.md), also as a [print-ready PDF](docs/BUILD_YOUR_OWN_PLUGIN.pdf).)
 
-**Runtime route introspection.** The most common objection to the tracer is the right one: plenty of production apps register routes in loops or build paths from variables, and a regex scan cannot see those. The complete fix is not a better parser, it is reading Express's own route table (`app._router.stack`) after the app boots, which contains every route regardless of how it was registered. The reason it is not the default: that requires executing the app's code, with its module-level side effects, env var requirements, and database connections. A static scan can never hurt you; a runtime scan can. So the next version ships both, static by default and runtime opt-in per repo.
+Stated plainly:
 
-Three seed eval cases ship in `evals/`, runnable with `claude plugin eval .` where that command is enabled (it is in early access, and prints a notice and exits otherwise). Beyond that: expand the eval suite and publish measured skill trigger rates against realistic prompts. Run blast-radius headless in CI so every PR touching a sensitive path gets a report as a comment. Distribute `.third-rail.json` and the runbook org-wide through managed settings so fifty teams inherit one paved road.
+- **The ack is an audit trail, not access control.** Claude itself can create the acknowledgment file. The guard is a speed bump that records a considered decision.
+- **The guard watches the file-editing tools.** A shell command like `sed -i` through Bash is not intercepted. Measured multi-model testing showed shell-heavy models can route around the Edit-tool matcher while the runbook still carries the discipline; a blocking Bash heuristic was evaluated and deliberately scoped out (it would fire on innocent reads and miss interpolated writes). Fleet-grade, model-independent enforcement belongs in CI.
+- **The tracer is static analysis** and prints its own blind spots. The agent treats its map as a starting inventory to verify with Read and Grep, and every report ends with what it could not verify statically — a review that hides its blind spots is worse than no review.
 
-## For your own workflow
+**Cut on purpose:** an MCP server (nothing here needs external system access), multi-framework support (one persona and one stack done properly beats four done shallowly), and auto-fix mode (on billing code, a reviewer that writes its own changes unreviewed is the disease pretending to be the cure).
 
-The one-page guide for building a plugin like this for a different workflow in your org: [docs/BUILD_YOUR_OWN_PLUGIN.md](docs/BUILD_YOUR_OWN_PLUGIN.md).
+**Roadmap:** runtime route introspection via Express's own route table after boot — static scan by default, runtime opt-in per repo, because a static scan can never hurt you and a runtime scan can. A real eval suite with measured trigger rates (three seed cases ship in [`evals/`](evals), runnable with `claude plugin eval .` where that early-access command is enabled). Headless blast-radius in CI commenting on PRs that touch sensitive paths. Org-wide distribution of the config and runbook through managed settings.
+
+## Development
+
+```bash
+node test/smoke.mjs            # 24 checks: guard matrix, tracer golden map, wiring
+claude plugin validate .       # manifest validation
+```
+
+The terminal screenshots and the demo GIF are reproducible from source — every frame renders real captured command output:
+
+```bash
+npm install --no-save --no-package-lock playwright
+npx playwright install chromium
+node scripts/generate-readme-assets.mjs
+```
+
+The decision log ([docs/DECISIONS.md](docs/DECISIONS.md)) records where the human overrode the tool during the build and why, including the three failures that shaped the test suite. Issues and PRs welcome; changes to guard or tracer behavior need a matching smoke check — that rule exists because of D9 through D11.
 
 ## License
 
-MIT
+[MIT](LICENSE)
