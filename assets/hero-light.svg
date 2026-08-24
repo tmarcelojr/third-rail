@@ -33,7 +33,7 @@
     <rect x="0" y="352" width="1280" height="5" fill="#bf8700" filter="url(#glow)" opacity="0.95"/>
     <g class="mono" font-size="13">
       <rect x="1024" y="341" width="160" height="27" rx="6" fill="#ffffff" stroke="#bf8700"/>
-      <text x="1040" y="359" fill="#9a6700">600V &#8212; guarded</text>
+      <text x="1040" y="359" fill="#9a6700">600V &#183; guarded</text>
     </g>
   </g>
 </svg>
