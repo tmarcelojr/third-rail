@@ -1,152 +1,143 @@
-# Build your own plugin
+# Build your own Claude Code plugin
 
-You watched third-rail block an edit to billing code and explain why. This page is how you build the same thing for your own workflow, in about an hour, most of which is thinking, not typing. It assumes you have Claude Code installed and one workflow that keeps going wrong.
+Five simple steps, about 15 minutes. The failure that already happened never gets a second run.
 
-## The one rule
+**Before you start:** Claude Code installed and authenticated. That is the only prerequisite.
 
-A plugin is your team's judgment, packaged. Do not start from "what can I build." Start from the last time something went wrong twice.
+| | |
+|---|---|
+| **The goal** | A plugin that fires on its own when your typed words match its trigger, or when you call it by name. |
+| **The one rule** | Don't start from what you could build. Start from what already went wrong in your workflow. |
+| **The checks** | Claude types the files. Done = you ran its green CHECK. Where a file disagrees, the page wins. |
 
-## Step 1: Name the pain (5 minutes)
+## 1 · Name the pain (~5 min)
 
-One workflow, one recurring failure, one sentence. Real examples from teams like ours:
+Write two sentences.
 
-- "Every dbt model change breaks a downstream dashboard nobody checked."
-- "Terraform module bumps get merged without anyone reading the plan diff."
-- "On-call keeps rediscovering the same five runbook steps at 3am."
+1. **The pain.** What went wrong in your workflow. Once is reason enough. One failure only; two joined by an "and"? Keep the worse half. Example: "A revenue model change broke prod."
+2. **The workflow it happens in.** The exact words your team types. Example: "Use when editing dbt models or schema.yml files." Typed words fire it; vague ones ("data quality") never do.
 
-If your sentence contains "and," cut it in half and keep the worse half.
+**Check:**
+- The pain sentence has no "and."
+- The workflow sentence starts with "Use when."
+- It names words your team actually types.
 
-## Step 2: Write the skill first (20 minutes)
+## 2 · Create it — pick one command (~1 min)
 
-The skill is a markdown file holding what your best engineer knows. The test: if they left tomorrow, this file is what you would wish they had written down.
+Open a terminal. Any folder works: this puts the plugin in Claude's own home, so it loads in every session. `dbt-guard` is an example name. Type your own, everywhere it appears on this page.
 
-Create `skills/<your-runbook>/SKILL.md`:
-
-```markdown
----
-name: dbt-change-runbook
-description: Runbook for changing dbt models safely. Use when adding, editing,
-  or reviewing dbt models, snapshots, or schema.yml files, especially models
-  with downstream exposures or dashboard dependencies.
----
-
-# Changing dbt models without breaking dashboards
-
-## 1. <Your most expensive lesson>
-**Gotcha:** <what it looks like when it goes wrong>
-**Rule:** <what to do instead>
-```
-
-Two things make skills work or fail:
-
-- **Gotchas first.** The generic advice is already in the model. What it does not have is that your `orders` model has a circular exposure with finance's dashboard. Write the surprises.
-- **The description decides whether it ever fires.** Write it in third person with the actual words someone types: file types, tool names, verbs. "Use when editing dbt models or schema.yml" triggers. "Helps with data quality" never will. After installing, test it: ask Claude to do the risky thing and check the skill loads. If it does not, sharpen the description and try again.
-
-## Step 3: Add an agent only if the work is multi-step (15 minutes, often skipped)
-
-If the job is "know the rules while editing," the skill alone is enough. Stop here and ship.
-
-Add an agent when the job is read, then trace, then judge: reviewing a change's blast radius, walking a dependency graph, checking claims against reality. Create `agents/<reviewer>.md` with frontmatter (`name`, `description`, `tools`) and write the procedure as numbered steps ending in a report format. Three patterns worth stealing from third-rail:
-
-- Let a small deterministic script compute the facts (route maps, lineage, plan diffs) and make the agent interpret them. Scripts do not hallucinate inventory.
-- Make the report say what it could NOT verify. A review that hides its blind spots is worse than no review.
-- End the report with a short counts-only scoreboard, and tell the caller to relay it. Whoever invoked your agent will summarize a long report into a few lines, and the structure you designed never reaches the reader.
-
-**The `tools` list is an allowlist, and it bites.** If your agent's procedure says "load the runbook skill," then `Skill` has to be in that list or the instruction is dead. I shipped `tools: Read, Grep, Glob, Bash` on an agent whose step 5 was "load the skill," and it could not. It produced plausible output anyway by half-remembering, which is the worst failure mode: no error, just a review against a standard that never loaded.
-
-## Step 4: Add a hook only for "always," never for "usually" (10 minutes, usually skipped)
-
-A hook is a shell script that runs on events like PreToolUse, outside the model. It cannot be talked out of anything. That makes it right for exactly one kind of rule: the ones where "Claude usually remembers" is not good enough. Blocking edits to guarded paths. Refusing commits with secrets. Requiring a plan file before a prod change.
-
-If you would accept the model occasionally forgetting the rule, it is not a hook, it is a line in the skill.
-
-`hooks/hooks.json` registers the script. A minimal example (this repo's live matcher is [hooks/hooks.json](../hooks/hooks.json), the single owner of that list):
-
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/guard.js",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-The script reads JSON from stdin and exits 0 to allow or 2 to block with a message on stderr. Keep it dependency-free and make the block message teach: say which rule matched and what to do next, not just "no." Steal `hooks/scripts/guard.js` from third-rail as a starting point.
-
-**Three things that will cost you an afternoon if you skip them.** They cost me one. Start the script with a shebang (`#!/usr/bin/env node`), run `chmod +x` on it, and confirm git recorded the executable bit with `git ls-files -s hooks/scripts/guard.js` (you want `100755`, not `100644`, or every clone gets a script that cannot run). Do not declare the hooks file in `plugin.json`; `hooks/hooks.json` loads automatically from that path, and declaring it again collides with itself and stops the whole plugin loading. And know that a PreToolUse hook which fails to run **fails open**: the edit proceeds, silently. A broken guard and no guard look identical from the outside, so test the block before you trust it.
-
-**A fourth, learned later: widening the matcher is not widening the guard.** Payload keys differ per tool (`NotebookEdit` sends `notebook_path`, not `file_path`), so a matcher entry whose payload key the script never reads fires on every matching call and silently allows all of them: a guard that looks wider and is not. Before adding a tool to the matcher, pipe that tool's real payload shape into the script by hand and watch it block. This repo's `test/smoke.mjs` does exactly that for every matched tool.
-
-## Step 5: Wrap it as a plugin (5 minutes)
-
-```
-your-plugin/
-├── .claude-plugin/
-│   ├── plugin.json
-│   └── marketplace.json
-├── skills/<your-runbook>/SKILL.md
-├── agents/<reviewer>.md          (if you added one)
-└── hooks/hooks.json              (if you added one)
-```
-
-`.claude-plugin/plugin.json`:
-
-```json
-{
-  "name": "your-plugin",
-  "description": "One sentence about the workflow it makes safer.",
-  "version": "0.1.0",
-  "author": { "name": "Your Team" }
-}
-```
-
-`.claude-plugin/marketplace.json`:
-
-```json
-{
-  "name": "your-plugin",
-  "description": "Marketplace for your-plugin.",
-  "owner": { "name": "Your Name" },
-  "plugins": [{ "name": "your-plugin", "source": "./" }]
-}
-```
-
-## Step 6: Validate, install, test on a colleague's machine (10 minutes)
+**Option 1 · it advises** (almost every plugin):
 
 ```bash
-claude plugin validate .
+claude plugin init dbt-guard
 ```
 
-Fix what it flags, then in Claude Code:
+**Option 2 · it BLOCKS an action** (hook files, needs Node.js):
+
+```bash
+claude plugin init dbt-guard --with hooks
+```
+
+What it creates:
 
 ```
-/plugin marketplace add ./
-/plugin install your-plugin@your-plugin
+~/.claude/skills/dbt-guard/
+├── .claude-plugin/plugin.json
+├── SKILL.md     your skill
+└── hooks/       option 2 only
 ```
 
-Now the real test: push to a repo, have a teammate clone it, run the same two commands, and try the risky workflow. If it works on their machine with no help from you, you have a plugin. If they hit a wall, that wall is your first troubleshooting entry.
+Windows: `~` is `C:\Users\<you>`.
 
-## Troubleshooting
+**Check:** it printed the path.
+- Root SKILL.md is correct: plugin.json says `"skills": ["./"]`.
+- Several skills? `skills/<name>/` folders, one SKILL.md each. plugin.json stays as is.
 
-| Symptom | Usual cause |
-|---|---|
-| `validate` fails | `skills/` or `agents/` accidentally placed inside `.claude-plugin/`. Only the two json files live there. |
-| Skill never triggers | Description too vague. Rewrite with the concrete words and file types people actually use, reinstall, retest. |
-| Hook never fires at all | Usually the script, not the patterns: missing shebang, missing executable bit, or a `hooks` entry declared in `plugin.json` that collides with the auto-loaded `hooks/hooks.json`. Check `/hooks` lists your entry, then run the script by hand with a sample payload piped to stdin. |
-| Hook fires constantly or on the wrong files | Path patterns too broad or too narrow. Print the incoming file path from the script while tuning. |
+## 3 · Have Claude fill it in (~5 min)
 
-## What to build next
+```bash
+cd ~/.claude/skills/dbt-guard
+claude
+```
 
-Once the first one works, the pattern repeats for any workflow with tribal knowledge and a blast radius: a migration-review plugin for the database team, an incident-runbook plugin for on-call, a release-checklist plugin for whoever cuts versions. Same shape every time: pain, skill, maybe agent, hook only for always, validate, hand it to a teammate.
+```text
+> Fill this plugin in. The workflow: [your workflow sentence].
+  The incident: [your pain sentence]
+```
 
-Write the skill for the engineer who has not had the incident yet. That is the whole trick.
+Option 2? Add: `also write the hook that BLOCKS [the action]`
+
+What it writes: your workflow sentence becomes the `description:` (that is the trigger), your pain becomes gotcha #1 in the GOTCHAS list. Option 2: also the `hooks/` files; check against THE CONTRACT.
+
+Keep it small: a skill covers almost everything. Add an agent only for a read → trace → judge job.
+
+**Check:** read what it wrote. Open SKILL.md yourself:
+- `description:` uses your team's words.
+- Gotcha #1 is your incident.
+- Every other gotcha is true.
+
+You are the reviewer. This is the judgment Claude cannot supply.
+
+## 4 · Watch it work (~2 min)
+
+First plant a private fact: one detail in gotcha #1 Claude could never guess, like your dashboard's name. Then `/exit`, open a fresh session, and ask for the risky thing:
+
+```bash
+claude
+```
+
+```text
+> I'm about to edit the revenue dbt model
+```
+
+Two ways it fires: your words match the `description:` (the real test), or you type the plugin or skill name.
+
+**Check:**
+- A `Skill(dbt-guard)` line appears: it loaded.
+- The answer repeats your private fact.
+- Generic advice = FAIL. Sharpen the description, `/reload-plugins`, re-ask.
+- By hand: `/dbt-guard`, or `/dbt-guard:<name>` for a `skills/` subfolder.
+
+## 5 · Prove the block (option 2 builds only, ~2 min)
+
+In the same session: attempt the forbidden action, then a harmless one. Testing by hand instead? Take the key your hook reads from THE CONTRACT below, never from your own guess (recorder line there for everything else).
+
+**Check** (both directions — you are done):
+- The forbidden action does not run, and your reason comes back. Claude may reword it.
+- The harmless one proceeds.
+
+A hook you have not watched block is not a guard.
+
+## The contract — only if you picked option 2
+
+`hooks/hooks.json`:
+
+```json
+{ "hooks": { "PreToolUse": [{ "matcher": "^(Bash)$",
+  "hooks": [{ "type": "command", "timeout": 10,
+  "command": "node ${CLAUDE_PLUGIN_ROOT}/hooks/<your-script>.js" }] }] } }
+```
+
+- stdin (read it: `fs.readFileSync(0, 'utf8')`) → `{tool_name, tool_input, cwd…}`
+- Edit/Write/MultiEdit → `tool_input.file_path` · NotebookEdit → `…notebook_path`
+- Bash → `tool_input.command` · any other key (file text incl.): record it: append the raw stdin string to a file; act once, read it, DELETE the line
+- exit 0 allow · exit 2 BLOCK, stderr = teach · other exits allow · anchor `^(…)$`
+
+FAIL-OPEN by default: a crash, a wrong script path, or a timeout (seconds) each let the action run; try/catch + exit 2 hardens crashes only (a timed-out hook is killed from outside). `${CLAUDE_PLUGIN_ROOT}` = this plugin's folder; `node --check` after edits. A hook sees the tool call, not your repo: a seatbelt, not a security boundary.
+
+## When it breaks — silent failures
+
+- **Skill never fires** · vague description (rewrite with typed words), or frontmatter has `disable-model-invocation: true`; delete that line.
+- **Hook never fires** · hooks.json shape wrong (copy it from the contract), no `node` prefix, or stale session → `/reload-plugins`; `/hooks` must list it.
+- **Hook allows what it should block** · it never read that tool's key, or a crash let the action through; re-run step 5 per tool.
+- **After sharing: install not found** · the marketplace names disagree with the plugin name; diff the files. `validate` never compares them.
+
+## Optional, later
+
+Your plugin is done and it is yours. Handing it to the team is a separate job: it becomes a marketplace plugin they install by name. Steps live in the docs below.
+
+---
+
+Goes deeper: [code.claude.com/docs/en/plugins](https://code.claude.com/docs/en/plugins)
+
+*Write the skill for the engineer who has not had the incident yet.*
