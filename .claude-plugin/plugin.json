@@ -1,7 +1,7 @@
 {
   "name": "third-rail",
   "displayName": "Third Rail",
-  "description": "Safe changes to the code everyone is afraid to touch. A deterministic guard hook, an org hardening runbook, and a blast-radius reviewer for legacy Node/Express monoliths.",
+  "description": "Safe changes to the code everyone is afraid to touch: billing, webhooks, auth, sessions. A deterministic guard hook, an org hardening runbook, and a blast-radius reviewer — shipped for Node/Express, portable to any workflow with a third rail.",
   "version": "0.1.0",
   "author": {
     "name": "Teo Marcelo",
