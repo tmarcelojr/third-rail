@@ -10,7 +10,7 @@
   <img alt="Zero runtime dependencies" src="https://img.shields.io/badge/runtime%20deps-0-3fb950">
 </p>
 
-A [Claude Code plugin](https://code.claude.com/docs/en/plugins) for the backend engineer maintaining a legacy Node/Express monolith — the codebase where billing routes, webhook handlers, and auth middleware are the third rail: the people who wrote them are gone, test coverage is thin, and every change near money is a risk conversation.
+A [Claude Code plugin](https://code.claude.com/docs/en/plugins) for the engineer whose next change touches a sensitive path — billing, webhooks, auth, sessions: the code where the people who wrote it are gone, test coverage is thin, and every change near money is a risk conversation.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/demo-dark.gif">
@@ -18,6 +18,8 @@ A [Claude Code plugin](https://code.claude.com/docs/en/plugins) for the backend 
 </picture>
 
 AI coding tools sharpen this problem in one specific way: they produce plausible changes fast, and plausible is the failure mode where wrong is expensive. third-rail turns your org's hardening knowledge into three components that fire at the right moments — a **deterministic guard hook** that blocks casual edits to sensitive paths before they happen, an **org runbook skill** with nine production-bought rules for payment, webhook, and auth code, and a **blast-radius agent** that maps what a change touches and reports every guard as verified, wired-but-untested, or claimed-only. The hook enforces, the skill knows, the agent judges.
+
+It ships fully instantiated for one stack — the legacy Node/Express monolith — because one persona done properly beats four done shallowly. The guard and its config are stack-agnostic, and the shape ports to any workflow with a third rail: [docs/BUILD_YOUR_OWN_PLUGIN.md](docs/BUILD_YOUR_OWN_PLUGIN.md) is the fifteen-minute guide to rebuilding it around yours.
 
 ## Install
 
@@ -179,7 +181,7 @@ Zero runtime dependencies: the hook and tracer are single-file Node stdlib scrip
 
 ## Scope and limitations
 
-Anthropic ships general-purpose `code-review` and `claude-security` plugins. third-rail is deliberately not that: it is the layer generic review cannot be — your org's runbook and your org's sensitive paths, enforced deterministically at edit time. The runbook that ships is one real org's starting point; edit [`skills/hardening-runbook/SKILL.md`](skills/hardening-runbook/SKILL.md) and `.third-rail.json` until they are yours. (For a different workflow entirely, the one-page guide to building a plugin like this is [docs/BUILD_YOUR_OWN_PLUGIN.md](docs/BUILD_YOUR_OWN_PLUGIN.md), also as a [print-ready PDF](docs/BUILD_YOUR_OWN_PLUGIN.pdf).)
+Anthropic ships general-purpose `code-review` and `claude-security` plugins. third-rail is deliberately not that: it is the layer generic review cannot be — your org's runbook and your org's sensitive paths, enforced deterministically at edit time. The runbook that ships is one real org's starting point; edit [`skills/hardening-runbook/SKILL.md`](skills/hardening-runbook/SKILL.md) and `.third-rail.json` until they are yours. (The build-your-own guide from the intro also ships as a [print-ready PDF](docs/BUILD_YOUR_OWN_PLUGIN.pdf).)
 
 Stated plainly:
 
