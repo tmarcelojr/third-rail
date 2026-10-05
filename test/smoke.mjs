@@ -201,7 +201,9 @@ function edit(filePath, cwd) {
   const entry = hooks.hooks.PreToolUse[0];
   check('wiring: hook matcher is the owned list',
     entry.matcher === 'Edit|Write|MultiEdit');
-  const cmd = entry.hooks[0].command.replace('${CLAUDE_PLUGIN_ROOT}', ROOT);
+  // The command quotes the placeholder so a plugin root with a space in it
+  // stays one word; strip the quotes to get the path the shell will run.
+  const cmd = entry.hooks[0].command.replace('${CLAUDE_PLUGIN_ROOT}', ROOT).replace(/^"(.*)"$/, '$1');
   let executable = false;
   try { fs.accessSync(cmd, fs.constants.X_OK); executable = true; } catch {}
   check('wiring: hook command path exists and is executable', executable, cmd);

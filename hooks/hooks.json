@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/guard.js",
+            "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/guard.js\"",
             "timeout": 10,
             "statusMessage": "third-rail: checking sensitive paths"
           }
