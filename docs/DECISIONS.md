@@ -1,6 +1,6 @@
 # Decision log
 
-Steering record for the third-rail build: where the human overrode the tool, and why. Kept because judgment is the deliverable; the code is just its residue. Entries D1 through D8 are from 2026-08-20; D9 and D10 from 2026-08-21; D11 from 2026-08-22. Written during the build and reviewed by the author before submission.
+Steering record for the third-rail build: where the human overrode the tool, and why. Kept because judgment is the deliverable; the code is just its residue. Entries D1 through D8 are from 2026-08-20; D9 and D10 from 2026-08-21; D11 from 2026-08-22; D12 from 2026-10-04, after submission. Written during the build and reviewed by the author before submission.
 
 ## D1. Persona: rejected the AI's first recommendation
 
@@ -55,6 +55,12 @@ Fixes from this round, all re-verified: removed the duplicate hooks declaration 
 Staring at all three rounds together produced the diagnosis this round is built on. First, facts were duplicated across files with no owner, so every fix updated one copy and left the rest stale; now every duplicated fact has one owner file and other mentions point instead of restating. Second, runtime boundaries were verified by reading, never by executing; now `test/smoke.mjs` executes every boundary a script can reach: real hook payloads, both symlink directions, a deliberately broken config, a golden route map, and wiring checks. Third, determinism was promised in the judgment layer, where it is impossible, and absent in the code layer, where it is cheap; now the guard table's membership is pinned to two rules bounded by the committed config, and the comparability claim is cut down to exactly what those rules guarantee.
 
 Two corrections admitted rather than smoothed over. The relay instruction now lives at the tail of the report itself, the one place the caller must read to relay anything at all. And this entry supersedes D7's "each mapped to the runbook item that catches it": five of the six map, and the sixth's unmapped state is the point.
+
+## D12. After submission: two over-matches, found by building a map
+
+2026-10-04. While building an explorable map of the plugin with Claude, I ported the guard's matcher into an in-page simulator and diffed it against the real script on ten payloads. The port matched; the script did not match my intent in two places. A leading `**/` consumed its own slash, so `**/server.js` compiled to "any path ending in server.js" and blocked `lib/observer.js` in the fixture. And with no config, default words were checked against every segment of the absolute path, so a checkout named `payments-api` made every code file sensitive, `authors-list.js` included, under a message that said "filename".
+
+Both failed closed, so they cost noise rather than safety, and no smoke check covered either. Fixes: `**/` now means zero or more whole directories; default matching reads only segments below the config directory or the working directory (and its realpath); the block reason names the segment that matched. Five new smoke checks, three of which fail against the previous guard. The same day, a headless session on Claude Code 2.1.251 confirmed the installed hook still blocks an Edit to billing.js. The lesson is D11's from the other side: the matcher had tests, but only for the inputs I had thought of, and a second implementation compared against the first found the ones I had not.
 
 ## With-more-time candidates captured during the build
 

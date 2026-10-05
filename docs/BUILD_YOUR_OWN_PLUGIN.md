@@ -22,7 +22,7 @@ Write two sentences.
 - The workflow sentence starts with "Use when."
 - It names words your team actually types.
 
-## 2 · Create it — pick one command (~1 min)
+## 2 · Create it: pick one command (~1 min)
 
 Open a terminal. Any folder works: this puts the plugin in Claude's own home, so it loads in every session. `dbt-guard` is an example name. Type your own, everywhere it appears on this page.
 
@@ -102,13 +102,13 @@ Two ways it fires: your words match the `description:` (the real test), or you t
 
 In the same session: attempt the forbidden action, then a harmless one. Testing by hand instead? Take the key your hook reads from THE CONTRACT below, never from your own guess (recorder line there for everything else).
 
-**Check** (both directions — you are done):
+**Check** (both directions, then you are done):
 - The forbidden action does not run, and your reason comes back. Claude may reword it.
 - The harmless one proceeds.
 
 A hook you have not watched block is not a guard.
 
-## The contract — only if you picked option 2
+## The contract (only if you picked option 2)
 
 `hooks/hooks.json`:
 
@@ -125,7 +125,7 @@ A hook you have not watched block is not a guard.
 
 FAIL-OPEN by default: a crash, a wrong script path, or a timeout (seconds) each let the action run; try/catch + exit 2 hardens crashes only (a timed-out hook is killed from outside). `${CLAUDE_PLUGIN_ROOT}` = this plugin's folder; `node --check` after edits. A hook sees the tool call, not your repo: a seatbelt, not a security boundary.
 
-## When it breaks — silent failures
+## When it breaks: silent failures
 
 - **Skill never fires** · vague description (rewrite with typed words), or frontmatter has `disable-model-invocation: true`; delete that line.
 - **Hook never fires** · hooks.json shape wrong (copy it from the contract), no `node` prefix, or stale session → `/reload-plugins`; `/hooks` must list it.

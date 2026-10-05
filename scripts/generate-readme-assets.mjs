@@ -54,6 +54,11 @@ ok   guard: broken config still blocks default-token files, and says the config 
 ok   guard: broken config surfaces a systemMessage warning on allowed edits
 ok   guard: acknowledgment file permits the edit
 ok   guard: pathological glob fails open without hanging
+ok   guard: **/server.js blocks server.js at the root
+ok   guard: **/server.js blocks a nested app/web/server.js
+ok   guard: **/server.js does not block lib/observer.js
+ok   guard: a default word in the checkout folder name does not block lib/util.js
+ok   guard: a default word inside the repo still blocks, naming the segment
 ok   tracer: fixture output matches the committed golden map
 ok   tracer: multi-target mount keeps every target, in argument order
 ok   tracer: router.use is mapped with its owner
@@ -69,7 +74,7 @@ ok   wiring: .claude-plugin/marketplace.json parses
 ok   wiring: examples/legacy-shop/.third-rail.json parses
 ok   wiring: all 15 file:line references in FIXTURE_DEFECTS.md exist
 
-all 24 checks passed`;
+all 29 checks passed`;
 
 // $ cd examples/legacy-shop && npm start   (then, from another shell:)
 const LIVE_BUGS = [
@@ -162,7 +167,7 @@ function highlightGuard(text) {
 function highlightSmoke(text) {
   return esc(text)
     .replace(/^ok /gm, '<span class="g">ok</span> ')
-    .replace(/^(all 24 checks passed)$/m, '<span class="g bold">$1</span>')
+    .replace(/^(all \d+ checks passed)$/m, '<span class="g bold">$1</span>')
     .replace(/^(guard|tracer|wiring)(?=:)/gm, '<span class="d">$1</span>');
 }
 
@@ -177,9 +182,9 @@ function highlightLiveBugs() {
 
 async function shootStatics(browser) {
   const jobs = [
-    { name: 'guard-block', title: 'third-rail — PreToolUse guard', width: 760,
-      body: (t) => `<span class="d"># Claude tries: Edit(examples/legacy-shop/routes/billing.js)</span>\n\n${highlightGuard(GUARD_BLOCK)}\n\n<span class="d">hook exit code: 2 — the edit never happened</span>` },
-    { name: 'live-bugs', title: 'examples/legacy-shop — the seeded bugs are live', width: 760,
+    { name: 'guard-block', title: 'third-rail: PreToolUse guard', width: 760,
+      body: (t) => `<span class="d"># Claude tries: Edit(examples/legacy-shop/routes/billing.js)</span>\n\n${highlightGuard(GUARD_BLOCK)}\n\n<span class="d">hook exit code: 2. The edit never happened.</span>` },
+    { name: 'live-bugs', title: 'examples/legacy-shop: the seeded bugs are live', width: 760,
       body: () => highlightLiveBugs() },
     { name: 'smoke', title: 'node test/smoke.mjs', width: 760,
       body: () => `<span class="b">$</span> node test/smoke.mjs\n${highlightSmoke(SMOKE)}` }
@@ -234,7 +239,7 @@ async function shootDemo(browser, theme) {
   mkdirSync(dir, { recursive: true });
 
   const page = await browser.newPage({ deviceScaleFactor: 2 });
-  await page.setContent(frameHtml(theme, 'claude — inside examples/legacy-shop', '', DEMO_W));
+  await page.setContent(frameHtml(theme, 'claude: inside examples/legacy-shop', '', DEMO_W));
   await page.evaluate(([w, h]) => {
     const pre = document.querySelector('pre');
     pre.style.width = `${w}px`;

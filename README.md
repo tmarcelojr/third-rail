@@ -23,7 +23,7 @@ It ships fully instantiated for one stack, the legacy Node/Express monolith, bec
 
 ## Install
 
-Prerequisites: [Claude Code](https://code.claude.com/docs) (tested with 2.1.241) and Node 18 or newer. The hook and tracer are dependency-free Node scripts. Then, inside Claude Code:
+Prerequisites: [Claude Code](https://code.claude.com/docs) (tested with 2.1.251) and Node 18 or newer. The hook and tracer are dependency-free Node scripts. Then, inside Claude Code:
 
 ```text
 /plugin marketplace add tmarcelojr/third-rail
@@ -140,7 +140,7 @@ node test/smoke.mjs
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/smoke-dark.png">
-  <img alt="Terminal output of node test/smoke.mjs: twenty-four ok lines covering guard blocking, symlink handling, broken-config behavior, acknowledgment handling, tracer golden-map comparison and edge cases, and wiring checks, ending with all 24 checks passed." src="assets/smoke-light.png" width="760">
+  <img alt="Terminal output of node test/smoke.mjs: twenty-nine ok lines covering guard blocking, symlink handling, broken-config behavior, acknowledgment handling, glob and default-word scoping, tracer golden-map comparison and edge cases, and wiring checks, ending with all 29 checks passed." src="assets/smoke-light.png" width="760">
 </picture>
 
 The guard itself is built to be boring: it fails open on malformed input, junk config, and its own crashes, because a guard bug must never brick the editor loop. A config that exists but cannot be parsed is surfaced loudly rather than silently swapped for defaults. Blocks teach: the message names the matched rule and the exact three steps to proceed.
@@ -164,8 +164,8 @@ Place at the repo root (the guard also finds it from parent directories):
 
 | Behavior | Detail |
 |---|---|
-| Globs | `**` crosses directories, `*` stays within a segment; case-insensitive; matched against both the resolved path and its realpath, so symlinks in either direction cannot dodge the guard |
-| No config | A conservative default list applies: whole-word tokens (`auth`, `billing`, `payment`, `webhook`, `stripe`, `checkout`, `refund`, `entitlement`, `session`, and similar) on code files only, so `authors-list.js` in an unrelated repo does not block |
+| Globs | `**/` matches zero or more whole directories (so `**/server.js` does not match `observer.js`), `*` stays within a segment; case-insensitive; matched against both the resolved path and its realpath, so symlinks in either direction cannot dodge the guard |
+| No config | A conservative default list applies: whole-word tokens (`auth`, `billing`, `payment`, `webhook`, `stripe`, `checkout`, `refund`, `entitlement`, `session`, and similar) on code files only, checked in path segments below the working directory, so `authors-list.js` does not block, and neither does every file in a checkout named `payments-api` |
 | Empty `sensitivePaths` | An explicit decision; the guard stays out of the way |
 | Broken config | Fails open, but the guard tells you your rules are not in effect (block message or a `systemMessage` warning) rather than silently reverting to defaults |
 | Acknowledgment | `touch .third-rail-ack` next to the config (or the working directory), or `THIRD_RAIL_ACK=1` for the session. Scoped on purpose: a stray ack far up the tree cannot silently disable the guard |
@@ -220,7 +220,7 @@ Stated plainly:
 ## Development
 
 ```bash
-node test/smoke.mjs            # 24 checks: guard matrix, tracer golden map, wiring
+node test/smoke.mjs            # 29 checks: guard matrix, tracer golden map, wiring
 claude plugin validate .       # manifest validation
 ```
 
