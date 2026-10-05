@@ -126,6 +126,27 @@ function edit(filePath, cwd) {
   fs.writeFileSync(path.join(patho, 'file.js'), 'x');
   check('guard: pathological glob fails open without hanging',
     runGuard(edit(path.join(patho, 'file.js'), patho)).code === 0);
+
+  // **/ is zero or more whole directories, so a file whose name merely ends
+  // in the pattern's tail (observer.js vs server.js) is not a match.
+  const globs = tmpdir('guard-globs');
+  fs.writeFileSync(path.join(globs, '.third-rail.json'),
+    JSON.stringify({ sensitivePaths: ['**/server.js'] }));
+  check('guard: **/server.js blocks server.js at the root',
+    runGuard(edit(path.join(globs, 'server.js'), globs)).code === 2);
+  check('guard: **/server.js blocks a nested app/web/server.js',
+    runGuard(edit(path.join(globs, 'app', 'web', 'server.js'), globs)).code === 2);
+  check('guard: **/server.js does not block lib/observer.js',
+    runGuard(edit(path.join(globs, 'lib', 'observer.js'), globs)).code === 0);
+
+  // Default words are checked only below the working directory, so a
+  // checkout whose folder name contains one ("payments") is not all sensitive.
+  const named = tmpdir('payments-api');
+  check('guard: a default word in the checkout folder name does not block lib/util.js',
+    runGuard(edit(path.join(named, 'lib', 'util.js'), named)).code === 0);
+  const inside = runGuard(edit(path.join(named, 'services', 'paymentService.js'), named));
+  check('guard: a default word inside the repo still blocks, naming the segment',
+    inside.code === 2 && inside.stderr.includes('path segment "paymentService.js"'));
 }
 
 // ---------------------------------------------------------------- tracer

@@ -64,7 +64,9 @@ function readStdin() {
   }
 }
 
-// Minimal glob: ** crosses directories, * stays within a segment.
+// Minimal glob: **/ is zero or more whole directories, a bare ** crosses
+// directories, * stays within a segment. "**/server.js" matches server.js and
+// a/b/server.js but not observer.js.
 // Patterns with too many wildcards fall back to plain substring matching so a
 // pathological pattern cannot backtrack the regex engine into the hook timeout.
 function matchesGlob(pattern, target) {
@@ -81,9 +83,13 @@ function matchesGlob(pattern, target) {
     const ch = pattern[i];
     if (ch === '*') {
       if (pattern[i + 1] === '*') {
-        out += '.*';
         i++;
-        if (pattern[i + 1] === '/') i++;
+        if (pattern[i + 1] === '/') {
+          out += '(?:.*/)?';
+          i++;
+        } else {
+          out += '.*';
+        }
       } else {
         out += '[^/]*';
       }
@@ -104,16 +110,29 @@ function matchesGlob(pattern, target) {
 // underscores, camelCase boundaries) and require an exact word from the
 // token list. "paymentService.js" matches (payment); "authors-list.js"
 // does not (authors is not auth).
-function matchesDefaultTokens(target) {
+//
+// Only segments below a root (the config's directory, or the working
+// directory) are checked, so a checkout named payments-api does not make
+// every file in it sensitive. A path outside every root is checked in full,
+// which errs toward blocking.
+function scopeToRoot(target, roots) {
+  for (const root of roots) {
+    const prefix = root.endsWith('/') ? root : `${root}/`;
+    if (target.startsWith(prefix)) return target.slice(prefix.length);
+  }
+  return target;
+}
+
+function matchesDefaultTokens(target, roots) {
   const ext = path.extname(target).toLowerCase();
   if (!DEFAULT_CODE_EXTENSIONS.has(ext)) return null;
-  for (const segment of target.split('/')) {
+  for (const segment of scopeToRoot(target, roots).split('/')) {
     const words = segment
       .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
       .toLowerCase()
       .split(/[^a-z0-9]+/);
     for (const word of words) {
-      if (DEFAULT_TOKENS.has(word)) return word;
+      if (DEFAULT_TOKENS.has(word)) return { word, segment };
     }
   }
   return null;
@@ -257,12 +276,22 @@ function main() {
       }
     }
   } else {
+    const roots = [];
+    if (configPath) roots.push(path.dirname(configPath).replace(/\\/g, '/'));
+    const absCwd = path.resolve(cwd).replace(/\\/g, '/');
+    roots.push(absCwd);
+    try {
+      roots.push(fs.realpathSync(absCwd).replace(/\\/g, '/'));
+    } catch {
+      // cwd vanished; the unresolved root is all there is.
+    }
     for (const candidate of candidates) {
-      const word = matchesDefaultTokens(candidate);
-      if (word) {
+      const hit = matchesDefaultTokens(candidate, roots);
+      if (hit) {
+        const found = `path segment "${truncate(hit.segment)}" contains the sensitive word "${hit.word}" from third-rail's default list`;
         reason = configProblem
-          ? `filename contains the sensitive word "${word}" from third-rail's default list. Note: ${configPath} ${configProblem}, so your repo's own rules are NOT in effect; fix that file to restore them`
-          : `filename contains the sensitive word "${word}" from third-rail's default list; no ${CONFIG_FILE} found, add one to tune this to your repo`;
+          ? `${found}. Note: ${configPath} ${configProblem}, so your repo's own rules are NOT in effect; fix that file to restore them`
+          : `${found}; no ${CONFIG_FILE} found, add one to tune this to your repo`;
         break;
       }
     }
