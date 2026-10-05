@@ -1,6 +1,6 @@
 # Decision log
 
-Steering record for the third-rail build: where the human overrode the tool, and why. Kept because judgment is the deliverable; the code is just its residue. Entries D1 through D8 are from 2026-08-20; D9 and D10 from 2026-08-21; D11 from 2026-08-22; D12 from 2026-10-04, after submission. Written during the build and reviewed by the author before submission.
+Steering record for the third-rail build: where the human overrode the tool, and why. Kept because judgment is the deliverable; the code is just its residue. Entries D1 through D8 are from 2026-08-20; D9 and D10 from 2026-08-21; D11 from 2026-08-22; D12 and D13 from 2026-10-04, after submission. Written during the build and reviewed by the author before submission.
 
 ## D1. Persona: rejected the AI's first recommendation
 
@@ -60,11 +60,19 @@ Two corrections admitted rather than smoothed over. The relay instruction now li
 
 2026-10-04. While building an explorable map of the plugin with Claude, I ported the guard's matcher into an in-page simulator and diffed it against the real script on ten payloads. The port matched; the script did not match my intent in two places. A leading `**/` consumed its own slash, so `**/server.js` compiled to "any path ending in server.js" and blocked `lib/observer.js` in the fixture. And with no config, default words were checked against every segment of the absolute path, so a checkout named `payments-api` made every code file sensitive, `authors-list.js` included, under a message that said "filename".
 
-Both failed closed, so they cost noise rather than safety, and no smoke check covered either. Fixes: `**/` now means zero or more whole directories; default matching reads only segments below the config directory or the working directory (and its realpath); the block reason names the segment that matched. Five new smoke checks, three of which fail against the previous guard. The same day, a headless session on Claude Code 2.1.251 confirmed the installed hook still blocks an Edit to billing.js. The lesson is D11's from the other side: the matcher had tests, but only for the inputs I had thought of, and a second implementation compared against the first found the ones I had not.
+Both failed closed, so they cost noise rather than safety, and no smoke check covered either. Fixes: `**/` now means zero or more whole directories; default matching reads only segments below the config directory or the working directory (and its realpath); the block reason names the segment that matched. Five new smoke checks, three of which fail against the previous guard. The same day, a headless session on Claude Code 2.1.289 confirmed the installed hook still blocks an Edit to billing.js. The lesson is D11's from the other side: the matcher had tests, but only for the inputs I had thought of, and a second implementation compared against the first found the ones I had not.
+
+## D13. The evals ran, and found D9 again
+
+2026-10-04. `claude plugin eval` shipped, so the three seed cases finally ran, and the first passes were wrong in three different ways. The run's workspace was empty, so `examples/legacy-shop/...` did not exist; each case now scaffolds the fixture in. Then the hook case let a billing edit through. Replaying the exact payload into guard.js exited 2, so the guard was right and the hook never ran it: eval runs give hooks a temporary HOME, my node comes from a Volta shim that needs HOME to find its toolchain, the hook errored, and a PreToolUse hook that errors fails open. That is D9's failure class in a new environment, and the guard's own fail-open design is why it was silent. With a real node binary first on PATH, the hook fired in every plugin run.
+
+The third problem was the grader. An LLM judge failed two runs that did exactly the right thing, so the hook case now uses three regex checks: the block message is in the trace, the reply says it was blocked, and Claude did not create the ack itself. That last check caught one run in five where Claude followed the block's steps, acknowledged on its own, and finished the edit: the README's stated limit, now measured. And the finding cases do not separate the arms on this fixture, because a current model finds the seeded bugs from the code alone. Results and setup are in evals/README.md, including what they do not show.
 
 ## With-more-time candidates captured during the build
 
-- Eval suite with measured trigger rates (three seed cases ship in `evals/`).
+- Evals with several runs per arm, and graders for what the reviewer adds over a bare review (claimed-only grading, runbook item numbers, a reconciling scoreboard), since the finding graders cannot separate the arms on this fixture.
+- Step 3 of the block message asks Claude to stop and get the user's go-ahead before creating the ack; the hook eval measured one self-acknowledgment in five runs.
+- Fail closed only when node cannot start: a two-line shell wrapper that exits 2 with a clear message on exit 126 or 127, opt-in per org, while guard.js keeps failing open on its own bugs.
 - Headless blast-radius in CI commenting on PRs that touch sensitive paths.
 - Org-wide distribution of `.third-rail.json` and the runbook via managed settings.
 - A `strict`-tier limiter check: the fixture's unused export mirrors a real pattern worth its own runbook line.

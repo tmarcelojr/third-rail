@@ -2,3 +2,4 @@ node_modules/
 .third-rail-ack
 *.log
 .DS_Store
+evals/results/

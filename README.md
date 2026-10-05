@@ -23,7 +23,7 @@ It ships fully instantiated for one stack, the legacy Node/Express monolith, bec
 
 ## Install
 
-Prerequisites: [Claude Code](https://code.claude.com/docs) (tested with 2.1.251) and Node 18 or newer. The hook and tracer are dependency-free Node scripts. Then, inside Claude Code:
+Prerequisites: [Claude Code](https://code.claude.com/docs) (tested with 2.1.289) and Node 18 or newer. The hook and tracer are dependency-free Node scripts. Then, inside Claude Code:
 
 ```text
 /plugin marketplace add tmarcelojr/third-rail
@@ -215,7 +215,7 @@ Stated plainly:
 
 **Cut on purpose:** an MCP server (nothing here needs external system access), multi-framework support (one persona and one stack done properly beats four done shallowly), and auto-fix mode (on billing code, a reviewer that writes its own changes unreviewed is the disease pretending to be the cure).
 
-**Roadmap:** runtime route introspection via Express's own route table after boot, static scan by default and runtime opt-in per repo, because a static scan can never hurt you and a runtime scan can. A real eval suite with measured trigger rates (three seed cases ship in [`evals/`](evals), runnable with `claude plugin eval .` where that early-access command is enabled). Headless blast-radius in CI commenting on PRs that touch sensitive paths. Org-wide distribution of the config and runbook through managed settings.
+**Roadmap:** runtime route introspection via Express's own route table after boot, static scan by default and runtime opt-in per repo, because a static scan can never hurt you and a runtime scan can. Evals with several runs per arm and graders for what the reviewer adds over a bare review; three cases ship in [`evals/`](evals) and run with `claude plugin eval` (results and setup in [evals/README.md](evals/README.md)). Headless blast-radius in CI commenting on PRs that touch sensitive paths. Org-wide distribution of the config and runbook through managed settings.
 
 ## Development
 
